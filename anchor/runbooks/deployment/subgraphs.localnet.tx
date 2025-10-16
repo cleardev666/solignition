@@ -1,8 +1,16 @@
+action "solignition_protocol_initialized" "svm::deploy_subgraph" {
+    program_id = action.deploy_solignition.program_id
+    program_idl = action.deploy_solignition.program_idl
+    slot = action.deploy_solignition.slot
+    event {
+        name = "ProtocolInitialized"
+    }
+}
 
 action "solignition_authority_reclaimed" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "AuthorityReclaimed"
     }
@@ -11,7 +19,7 @@ action "solignition_authority_reclaimed" "svm::deploy_subgraph" {
 action "solignition_authority_transferred" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "AuthorityTransferred"
     }
@@ -20,7 +28,7 @@ action "solignition_authority_transferred" "svm::deploy_subgraph" {
 action "solignition_config_updated" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "ConfigUpdated"
     }
@@ -29,7 +37,7 @@ action "solignition_config_updated" "svm::deploy_subgraph" {
 action "solignition_deposited" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "Deposited"
     }
@@ -38,7 +46,7 @@ action "solignition_deposited" "svm::deploy_subgraph" {
 action "solignition_loan_deployed" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "LoanDeployed"
     }
@@ -47,7 +55,7 @@ action "solignition_loan_deployed" "svm::deploy_subgraph" {
 action "solignition_loan_recovered" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "LoanRecovered"
     }
@@ -56,7 +64,7 @@ action "solignition_loan_recovered" "svm::deploy_subgraph" {
 action "solignition_loan_repaid" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "LoanRepaid"
     }
@@ -65,25 +73,18 @@ action "solignition_loan_repaid" "svm::deploy_subgraph" {
 action "solignition_loan_requested" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "LoanRequested"
     }
 }
 
-action "solignition_protocol_initialized" "svm::deploy_subgraph" {
-    program_id = action.deploy_solignition.program_id
-    program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
-    event {
-        name = "ProtocolInitialized"
-    }
-}
+
 
 action "solignition_protocol_paused_changed" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "ProtocolPausedChanged"
     }
@@ -92,7 +93,7 @@ action "solignition_protocol_paused_changed" "svm::deploy_subgraph" {
 action "solignition_sol_reclaimed" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "SolReclaimed"
     }
@@ -101,7 +102,7 @@ action "solignition_sol_reclaimed" "svm::deploy_subgraph" {
 action "solignition_withdrawn" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
     program_idl = action.deploy_solignition.program_idl
-    block_height = 0 // action.deploy_solignition.block_height
+    slot = action.deploy_solignition.slot
     event {
         name = "Withdrawn"
     }

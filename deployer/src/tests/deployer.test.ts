@@ -5,7 +5,9 @@ import * as anchor from '@coral-xyz/anchor';
 import { StateManager, BinaryManager, ProgramDeployer, EventMonitor } from '../index';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as dotenv from 'dotenv';
 import { Level } from 'level';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // Mock Solana web3.js
 jest.mock('@solana/web3.js', () => ({
@@ -290,31 +292,6 @@ describe('Integration Tests', () => {
     expect(true).toBe(true);
   });
 });
-
-// jest.config.js
-module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
-  transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.d.ts',
-    '!src/**/*.test.ts',
-    '!src/**/*.integration.test.ts',
-  ],
-  coverageThreshold: {
-    global: {
-      branches: 70,
-      functions: 80,
-      lines: 80,
-      statements: 80,
-    },
-  },
-};
 
 // src/__tests__/deployer.integration.test.ts
 import { Connection, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';

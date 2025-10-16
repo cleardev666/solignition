@@ -51,7 +51,7 @@ describe("solignition", () => {
     //const signer = await loadKeypairSignerFromFile();
     const keypairBytes = bs58.decode(keypairBase58);
     const keypair = Keypair.fromSecretKey(keypairBytes);
-    console.log("address:", keypair);
+    //console.log("address:", keypair);
     const decoded = bs58.decode(keypairBase58);
     const keyArray = Array.from(decoded);
     const outputPath = '/root/projects/testkeys/key.json';
@@ -124,6 +124,12 @@ describe("solignition", () => {
       const defaultInterestRateBps = 500; // 5%
       const defaultAdminFeeBps = 100; // 1%
 
+      // Set up listener before sending transaction
+    const listenerId = program.addEventListener("ProtocolInitialized", event => {
+      // Do something with the event data
+      console.log("Event Data:", event);
+    });
+
       const tx = await program.methods
         .initialize(adminFeeSplitBps, defaultInterestRateBps, defaultAdminFeeBps)
         .accounts({
@@ -152,6 +158,9 @@ describe("solignition", () => {
       assert.equal(config.totalDeposits.toNumber(), 0);
       assert.equal(config.totalLoansOutstanding.toNumber(), 0);
       assert.equal(config.isPaused, false);
+
+      // Remove listener
+      await program.removeEventListener(listenerId);
     });
 
     it("should fail to initialize twice", async () => {

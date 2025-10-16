@@ -61,7 +61,7 @@ pub mod solignition {
         config.is_paused = false;
         config.loan_counter = 0;
         
-        emit!(ProtocolInitialized {
+        emit_cpi!(ProtocolInitialized {
             admin: ctx.accounts.admin.key(),
             treasury: ctx.accounts.treasury.key(),
         });
@@ -99,7 +99,7 @@ pub mod solignition {
         // Update protocol totals
         ctx.accounts.protocol_config.total_deposits += amount;
 
-        emit!(Deposited {
+        emit_cpi!(Deposited {
             depositor: ctx.accounts.depositor.key(),
             amount,
             total_deposits: ctx.accounts.protocol_config.total_deposits,
@@ -165,7 +165,7 @@ pub mod solignition {
         // Update protocol totals
         ctx.accounts.protocol_config.total_deposits -= amount;
 
-        emit!(Withdrawn {
+        emit_cpi!(Withdrawn {
             depositor: ctx.accounts.depositor.key(),
             amount,
             remaining_balance: depositor_record.share_amount,
@@ -260,7 +260,7 @@ pub mod solignition {
         ctx.accounts.protocol_config.total_loans_outstanding += principal;
         ctx.accounts.protocol_config.loan_counter += 1;
 
-        emit!(LoanRequested {
+        emit_cpi!(LoanRequested {
             borrower: ctx.accounts.borrower.key(),
             loan_id,
             principal,
@@ -284,7 +284,7 @@ pub mod solignition {
         
         ctx.accounts.loan.program_pubkey = program_pubkey;
         
-        emit!(LoanDeployed {
+        emit_cpi!(LoanDeployed {
             loan_id,
             program_pubkey,
         });
@@ -349,7 +349,7 @@ pub mod solignition {
                 signer,
             )?;
 
-            emit!(AuthorityTransferred {
+            emit_cpi!(AuthorityTransferred {
                 program_pubkey: loan.program_pubkey,
                 new_authority: ctx.accounts.borrower.key(),
             });
@@ -367,7 +367,7 @@ pub mod solignition {
         // Update protocol state
         ctx.accounts.protocol_config.total_loans_outstanding -= loan.principal;
 
-        emit!(LoanRepaid {
+        emit_cpi!(LoanRepaid {
             loan_id: loan.loan_id,
             total_repaid: total_due,
             interest_paid: interest,
@@ -426,7 +426,7 @@ pub mod solignition {
         // Update protocol state (principal already deducted at origination)
         ctx.accounts.protocol_config.total_loans_outstanding -= loan.principal;
 
-        emit!(LoanRecovered {
+        emit_cpi!(LoanRecovered {
             loan_id: loan.loan_id,
             admin_fee_distributed: loan.admin_fee_paid,
             depositor_share,
@@ -458,7 +458,7 @@ pub mod solignition {
         // The protocol already holds the authority (it was never transferred in recovery)
         // This instruction is for explicit actions like closing the program account
         
-        emit!(AuthorityReclaimed {
+        emit_cpi!(AuthorityReclaimed {
             loan_id: loan.loan_id,
             program_pubkey: loan.program_pubkey,
             authority: ctx.accounts.authority_pda.key(),
@@ -501,7 +501,7 @@ pub mod solignition {
         loan.reclaimed_amount = Some(loan.reclaimed_amount.unwrap_or(0) + amount);
         loan.reclaimed_ts = Some(Clock::get()?.unix_timestamp);
         
-        emit!(SolReclaimed {
+        emit_cpi!(SolReclaimed {
             loan_id: loan.loan_id,
             amount,
             total_reclaimed: loan.reclaimed_amount.unwrap_or(0),
@@ -544,7 +544,7 @@ pub mod solignition {
             config.treasury = treasury;
         }
         
-        emit!(ConfigUpdated {
+        emit_cpi!(ConfigUpdated {
             admin_fee_split_bps: config.admin_fee_split_bps,
             default_interest_rate_bps: config.default_interest_rate_bps,
             default_admin_fee_bps: config.default_admin_fee_bps,
@@ -578,7 +578,7 @@ fn distribute_yield(config: &mut ProtocolConfig, amount: u64) {
 }
 
 // ===== CONTEXTS =====
-
+#[event_cpi]
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(mut)]
@@ -627,6 +627,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct Deposit<'info> {
     #[account(mut)]
@@ -655,6 +656,7 @@ pub struct Deposit<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
     #[account(mut)]
@@ -682,6 +684,7 @@ pub struct Withdraw<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 #[instruction(loan_id: u64)]
 pub struct RequestLoan<'info> {
@@ -730,6 +733,7 @@ pub struct RequestLoan<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct SetDeployedProgram<'info> {
     pub admin: Signer<'info>,
@@ -744,6 +748,7 @@ pub struct SetDeployedProgram<'info> {
     pub loan: Account<'info, Loan>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct RepayLoan<'info> {
     #[account(mut)]
@@ -779,6 +784,7 @@ pub struct RepayLoan<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct RecoverLoan<'info> {
     pub admin: Signer<'info>,
@@ -807,6 +813,7 @@ pub struct RecoverLoan<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct ReclaimProgramAuthority<'info> {
     pub admin: Signer<'info>,
@@ -829,6 +836,7 @@ pub struct ReclaimProgramAuthority<'info> {
     pub authority_pda: AccountInfo<'info>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct ReturnReclaimedSol<'info> {
     pub caller: Signer<'info>,
@@ -856,6 +864,7 @@ pub struct ReturnReclaimedSol<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct AdminAction<'info> {
     pub admin: Signer<'info>,
