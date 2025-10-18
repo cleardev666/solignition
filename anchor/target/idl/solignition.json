@@ -306,91 +306,6 @@
       ]
     },
     {
-      "name": "reclaim_program_authority",
-      "docs": [
-        "Reclaim program authority for recovered loans (enables closing program accounts)"
-      ],
-      "discriminator": [
-        59,
-        60,
-        162,
-        122,
-        3,
-        250,
-        57,
-        139
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "protocol_config"
-          ]
-        },
-        {
-          "name": "protocol_config"
-        },
-        {
-          "name": "loan"
-        },
-        {
-          "name": "authority_pda",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "event_authority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  95,
-                  95,
-                  101,
-                  118,
-                  101,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "recover_loan",
       "docs": [
         "Recover expired loan"
@@ -631,8 +546,9 @@
                 ]
               },
               {
-                "kind": "arg",
-                "path": "loan_id"
+                "kind": "account",
+                "path": "protocol_config.loan_counter",
+                "account": "ProtocolConfig"
               }
             ]
           }
@@ -740,10 +656,6 @@
         }
       ],
       "args": [
-        {
-          "name": "loan_id",
-          "type": "u64"
-        },
         {
           "name": "principal",
           "type": "u64"
@@ -1782,6 +1694,9 @@
           },
           {
             "name": "Recovered"
+          },
+          {
+            "name": "Pending"
           }
         ]
       }

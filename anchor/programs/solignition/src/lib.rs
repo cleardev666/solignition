@@ -177,7 +177,6 @@ pub mod solignition {
     /// Request a loan and pay upfront admin fee
     pub fn request_loan(
         ctx: Context<RequestLoan>,
-        loan_id: u64,
         principal: u64,
         duration: i64,
         interest_rate_bps: u16,
@@ -188,6 +187,8 @@ pub mod solignition {
         require!(duration > 0, ErrorCode::InvalidDuration);
         require!(interest_rate_bps <= 10000, ErrorCode::InvalidInterestRate);
         require!(admin_fee_bps <= 10000, ErrorCode::InvalidAdminFee);
+
+        //require!(ctx.accounts.protocol_config.loan_counter == , ErrorCode::InvalidLoanCounter);
 
         // Calculate upfront admin fee
         let admin_fee = (principal as u128)
@@ -244,7 +245,7 @@ pub mod solignition {
         
         // Create loan record
         let loan = &mut ctx.accounts.loan;
-        loan.loan_id = loan_id;
+        loan.loan_id = ctx.accounts.protocol_config.loan_counter;
         loan.borrower = ctx.accounts.borrower.key();
         loan.program_pubkey = Pubkey::default(); // Will be set after deployment
         loan.principal = principal;
@@ -253,8 +254,13 @@ pub mod solignition {
         loan.admin_fee_bps = admin_fee_bps;
         loan.admin_fee_paid = admin_fee;
         loan.start_ts = Clock::get()?.unix_timestamp;
-        loan.state = LoanState::Active;
+        loan.state = LoanState::Pending;
         loan.authority_pda = ctx.accounts.authority_pda.key();
+        loan.repaid_ts = Some(0);
+        loan.recovered_ts = Some(0);
+        loan.interest_paid = Some(0);
+        loan.reclaimed_amount = Some(0);
+        loan.reclaimed_ts = Some(0);
 
         // Update protocol state
         ctx.accounts.protocol_config.total_loans_outstanding += principal;
@@ -262,7 +268,7 @@ pub mod solignition {
 
         emit_cpi!(LoanRequested {
             borrower: ctx.accounts.borrower.key(),
-            loan_id,
+            loan_id: loan.loan_id,
             principal,
             duration,
             interest_rate_bps,
@@ -283,7 +289,8 @@ pub mod solignition {
         require!(ctx.accounts.loan.program_pubkey == Pubkey::default(), ErrorCode::ProgramAlreadySet);
         
         ctx.accounts.loan.program_pubkey = program_pubkey;
-        
+        ctx.accounts.loan.state = LoanState::Active;
+
         emit_cpi!(LoanDeployed {
             loan_id,
             program_pubkey,
@@ -381,7 +388,7 @@ pub mod solignition {
         require!(!ctx.accounts.protocol_config.is_paused, ErrorCode::ProtocolPaused);
         
         let loan = &ctx.accounts.loan;
-        require!(loan.state == LoanState::Active, ErrorCode::LoanNotActive);
+        require!(loan.state == LoanState::Active || loan.state == LoanState::Pending, ErrorCode::LoanNotActive);
         
         let clock = Clock::get()?;
         require!(
@@ -446,7 +453,7 @@ pub mod solignition {
         
         Ok(())
     }
-
+/* 
     /// Reclaim program authority for recovered loans (enables closing program accounts)
     pub fn reclaim_program_authority(ctx: Context<ReclaimProgramAuthority>) -> Result<()> {
         let loan = &ctx.accounts.loan;
@@ -466,13 +473,14 @@ pub mod solignition {
         
         Ok(())
     }
-
+*/
     /// Return reclaimed SOL from expired/recovered loans back to vault
     pub fn return_reclaimed_sol(ctx: Context<ReturnReclaimedSol>, amount: u64) -> Result<()> {
         let loan = &ctx.accounts.loan;
         
         // Ensure loan has been recovered
-        require!(loan.state == LoanState::Recovered, ErrorCode::LoanNotRecovered);
+        require!(loan.state == LoanState::Recovered ||
+                 loan.state == LoanState::Pending , ErrorCode::LoanNotRecovered);
         
         // Ensure caller is authorized (admin or deployer)
         require!(
@@ -686,7 +694,7 @@ pub struct Withdraw<'info> {
 
 #[event_cpi]
 #[derive(Accounts)]
-#[instruction(loan_id: u64)]
+//#[instruction(loan_id: u64)]
 pub struct RequestLoan<'info> {
     #[account(mut)]
     pub borrower: Signer<'info>,
@@ -695,7 +703,7 @@ pub struct RequestLoan<'info> {
         init,
         payer = borrower,
         space = 8 + Loan::SIZE,
-        seeds = [LOAN_SEED, loan_id.to_le_bytes().as_ref()],
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref()],
         bump
     )]
     pub loan: Account<'info, Loan>,
@@ -939,6 +947,7 @@ pub enum LoanState {
     Active,
     Repaid,
     Recovered,
+    Pending,
 }
 
 // ===== EVENTS =====

@@ -12,6 +12,7 @@ type RequestLoanParams = {
   duration: bigint
   interestRateBps: number
   adminFeeBps: number
+  file: File
 }
 
 export function useRequestLoanMutation({ account }: { account: UiWalletAccount }) {

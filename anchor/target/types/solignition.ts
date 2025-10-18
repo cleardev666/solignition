@@ -312,91 +312,6 @@ export type Solignition = {
       ]
     },
     {
-      "name": "reclaimProgramAuthority",
-      "docs": [
-        "Reclaim program authority for recovered loans (enables closing program accounts)"
-      ],
-      "discriminator": [
-        59,
-        60,
-        162,
-        122,
-        3,
-        250,
-        57,
-        139
-      ],
-      "accounts": [
-        {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "protocolConfig"
-          ]
-        },
-        {
-          "name": "protocolConfig"
-        },
-        {
-          "name": "loan"
-        },
-        {
-          "name": "authorityPda",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "eventAuthority",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  95,
-                  95,
-                  101,
-                  118,
-                  101,
-                  110,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "program"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "recoverLoan",
       "docs": [
         "Recover expired loan"
@@ -637,8 +552,9 @@ export type Solignition = {
                 ]
               },
               {
-                "kind": "arg",
-                "path": "loanId"
+                "kind": "account",
+                "path": "protocol_config.loan_counter",
+                "account": "protocolConfig"
               }
             ]
           }
@@ -746,10 +662,6 @@ export type Solignition = {
         }
       ],
       "args": [
-        {
-          "name": "loanId",
-          "type": "u64"
-        },
         {
           "name": "principal",
           "type": "u64"
@@ -1788,6 +1700,9 @@ export type Solignition = {
           },
           {
             "name": "recovered"
+          },
+          {
+            "name": "pending"
           }
         ]
       }

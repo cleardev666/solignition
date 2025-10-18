@@ -1,34 +1,35 @@
 import * as anchor from '@coral-xyz/anchor';
-import { Program, AnchorProvider, Wallet, EventParser, Idl } from '@coral-xyz/anchor';
+import { Program, AnchorProvider, Wallet, Idl } from '@coral-xyz/anchor';
 import {
   Connection,
   Keypair,
   PublicKey,
   Transaction,
   SystemProgram,
-  TransactionInstruction,
   LAMPORTS_PER_SOL,
   sendAndConfirmTransaction,
   ComputeBudgetProgram,
   ConfirmOptions,
 } from '@solana/web3.js';
-import { BPF_LOADER_DEPRECATED_PROGRAM_ID } from '@solana/web3.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import winston from 'winston';
 import { EventEmitter } from 'events';
 import express from 'express';
+import multer from 'multer';
 import { Registry, Gauge, Counter, Histogram } from 'prom-client';
 import * as dotenv from 'dotenv';
 import { Level } from 'level';
+import { GraphQLClient, gql } from 'graphql-request';
+import { exec, spawn } from 'child_process';
+import { promisify } from 'util';
+import cors from 'cors';
 
-// Load environment variables from deployer directory
+const execAsync = promisify(exec);
+
+// Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
-// Import the IDL type - Anchor generates this
-// Adjust the path to match where your IDL is generated
-type SolignitionProgram = Program<Idl>;
 
 // ============ Configuration ============
 interface DeployerConfig {
@@ -38,6 +39,7 @@ interface DeployerConfig {
   deployerKeypairPath: string;
   adminKeypairPath?: string;
   binaryStoragePath: string;
+  uploadPath: string;
   dbPath: string;
   idlPath: string;
   port: number;
@@ -45,6 +47,8 @@ interface DeployerConfig {
   retryDelayMs: number;
   pollIntervalMs: number;
   cluster: 'devnet' | 'testnet' | 'mainnet-beta' | 'localnet';
+  graphqlEndpoint: string;
+  solanaCliPath?: string;
 }
 
 const config: DeployerConfig = {
@@ -54,46 +58,30 @@ const config: DeployerConfig = {
   deployerKeypairPath: process.env.DEPLOYER_KEYPAIR_PATH || './keys/deployer-keypair.json',
   adminKeypairPath: process.env.ADMIN_KEYPAIR_PATH,
   binaryStoragePath: process.env.BINARY_STORAGE_PATH || './binaries',
+  uploadPath: process.env.UPLOAD_PATH || './uploads',
   dbPath: process.env.DB_PATH || './deployer-state',
   idlPath: process.env.IDL_PATH || './idl.json',
   port: parseInt(process.env.PORT || '3000'),
   maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
   retryDelayMs: parseInt(process.env.RETRY_DELAY_MS || '5000'),
-  pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS || '30000'),
+  pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS || '5000'),
   cluster: (process.env.CLUSTER as any) || 'localnet',
+  graphqlEndpoint: process.env.GRAPHQL_ENDPOINT || 'http://127.0.0.1:18488/subgraphs',
+  solanaCliPath: process.env.SOLANA_CLI_PATH || 'solana',
 };
 
 // ============ Constants ============
 const VAULT_SEED = Buffer.from('vault');
 const AUTHORITY_SEED = Buffer.from('authority');
-const ADMIN_SEED = Buffer.from('admin');
-const TREASURY_SEED = Buffer.from('treasury');
-const LOAN_SEED = Buffer.from('loan');
-const DEPOSITOR_SEED = Buffer.from('depositor');
 const PROTOCOL_CONFIG_SEED = Buffer.from('config');
+const LOAN_SEED = Buffer.from('loan');
 
 // ============ Types ============
-interface LoanRequestedEvent {
-  borrower: PublicKey;
-  loanId: anchor.BN;
-  principal: anchor.BN;
-  duration: anchor.BN;
-  interestRateBps: number;
-  adminFee: anchor.BN;
-}
-
-interface LoanRecoveredEvent {
-  loanId: anchor.BN;
-  adminFeeDistributed: anchor.BN;
-  depositorShare: anchor.BN;
-  treasuryShare: anchor.BN;
-}
-
 interface DeploymentRecord {
   loanId: string;
   borrower: string;
   programId?: string;
-  bufferAccount?: string;
+  deploymentCost?: number;
   deployTxSignature?: string;
   setDeployedTxSignature?: string;
   recoveryTxSignature?: string;
@@ -102,13 +90,59 @@ interface DeploymentRecord {
   createdAt: number;
   updatedAt: number;
   binaryHash?: string;
+  binaryPath?: string;
   principal: string;
 }
 
-enum LoanState {
-  Active = 0,
-  Repaid = 1,
-  Recovered = 2,
+interface FileUploadRecord {
+  fileId: string;
+  borrower: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  binaryHash: string;
+  estimatedCost: number;
+  status: 'pending' | 'ready' | 'deployed';
+  createdAt: number;
+}
+
+interface LoanData {
+  loanId: string;
+  borrower: string;
+  principal: string;
+  deployedProgram?: string;
+  state: number;
+  startTs: number;
+  duration: number;
+}
+
+interface LoanRequestedData {
+  adminFee: string;
+  borrower: string;
+  duration: string;
+  interestRateBps: string;
+  loanId: string;
+  principal: string;
+  slot: number;
+  transactionSignature: string;
+}
+
+interface ProtocolConfigData {
+  admin: string;
+  adminFeeSplitBps: string;
+  defaultAdminFeeBps: string;
+  defaultInterestRateBps: string;
+  deployer: string;
+  isPaused: number;
+  lamports: number;
+  loanCounter: string;
+  owner: string;
+  pubkey: string;
+  slot: number;
+  totalDeposits: string;
+  totalLoansOutstanding: string;
+  totalYieldDistributed: string;
+  treasury: string;
 }
 
 // ============ Logging ============
@@ -150,14 +184,14 @@ const metrics = {
     help: 'Duration of deployment operations',
     registers: [registry],
   }),
-  solanaRpcErrors: new Counter({
-    name: 'deployer_solana_rpc_errors_total',
-    help: 'Total number of Solana RPC errors',
-    registers: [registry],
-  }),
   activeLoans: new Gauge({
     name: 'deployer_active_loans',
     help: 'Number of active loans being monitored',
+    registers: [registry],
+  }),
+  fileUploads: new Counter({
+    name: 'deployer_file_uploads_total',
+    help: 'Total number of file uploads',
     registers: [registry],
   }),
 };
@@ -193,13 +227,35 @@ class StateManager {
     return deployments;
   }
 
-  async setLastProcessedSlot(slot: number): Promise<void> {
-    await this.db.put('last-processed-slot', slot);
+  async saveFileUpload(record: FileUploadRecord): Promise<void> {
+    await this.db.put(`upload:${record.fileId}`, record);
   }
 
-  async getLastProcessedSlot(): Promise<number | null> {
+  async getFileUpload(fileId: string): Promise<FileUploadRecord | null> {
     try {
-      return await this.db.get('last-processed-slot');
+      return await this.db.get(`upload:${fileId}`);
+    } catch (error: any) {
+      if (error.notFound) return null;
+      throw error;
+    }
+  }
+
+  async getFileUploadByBorrower(borrower: string): Promise<FileUploadRecord | null> {
+    for await (const [key, value] of this.db.iterator()) {
+      if (key.startsWith('upload:') && value.borrower === borrower && value.status === 'ready') {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  async setLastProcessedLoanId(loanId: string): Promise<void> {
+    await this.db.put('last-processed-loan-id', loanId);
+  }
+
+  async getLastProcessedLoanId(): Promise<string | null> {
+    try {
+      return await this.db.get('last-processed-loan-id');
     } catch (error: any) {
       if (error.notFound) return null;
       throw error;
@@ -214,26 +270,25 @@ class StateManager {
 // ============ Binary Management ============
 class BinaryManager {
   private storagePath: string;
+  private uploadPath: string;
 
-  constructor(storagePath: string) {
+  constructor(storagePath: string, uploadPath: string) {
     this.storagePath = storagePath;
+    this.uploadPath = uploadPath;
   }
 
   async init(): Promise<void> {
     await fs.mkdir(this.storagePath, { recursive: true });
+    await fs.mkdir(this.uploadPath, { recursive: true });
   }
 
-  async storeBinary(loanId: string, binaryData: Buffer): Promise<string> {
+  async storeBinary(fileId: string, sourcePath: string): Promise<{ hash: string; destinationPath: string }> {
+    const binaryData = await fs.readFile(sourcePath);
     const hash = createHash('sha256').update(binaryData).digest('hex');
-    const filePath = path.join(this.storagePath, `${loanId}_${hash}.so`);
-    await fs.writeFile(filePath, binaryData);
-    logger.info(`Stored binary for loan ${loanId}, hash: ${hash}`);
-    return hash;
-  }
-
-  async getBinary(loanId: string, hash: string): Promise<Buffer> {
-    const filePath = path.join(this.storagePath, `${loanId}_${hash}.so`);
-    return await fs.readFile(filePath);
+    const destinationPath = path.join(this.storagePath, `${fileId}_${hash}.so`);
+    await fs.copyFile(sourcePath, destinationPath);
+    logger.info(`Stored binary for file ${fileId}, hash: ${hash}`);
+    return { hash, destinationPath };
   }
 
   async validateBinary(binaryData: Buffer): Promise<{ valid: boolean; reason?: string }> {
@@ -241,163 +296,107 @@ class BinaryManager {
       return { valid: false, reason: 'Empty binary' };
     }
 
+    // Check for ELF header
     const elfMagic = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
     if (!binaryData.subarray(0, 4).equals(elfMagic)) {
       return { valid: false, reason: 'Invalid ELF header' };
     }
 
+    // Check file size (adjust based on your requirements)
     if (binaryData.length > 100 * 1024 * 1024) {
       return { valid: false, reason: 'Binary too large (>100MB)' };
     }
 
     return { valid: true };
   }
-}
 
-// ============ Solana Program Deployer ============
-class ProgramDeployer {
-  private connection: Connection;
-  private deployerWallet: Wallet;
-  private adminWallet?: Wallet;
-  private program!: SolignitionProgram;
-  private authorityPda: PublicKey;
-  private deployerPda!: PublicKey;
-  private vaultPda: PublicKey;
-  private configPda: PublicKey;
-
-  constructor(connection: Connection, deployerKeypair: Keypair, adminKeypair?: Keypair) {
-    this.connection = connection;
-    this.deployerWallet = new Wallet(deployerKeypair);
-    if (adminKeypair) {
-      this.adminWallet = new Wallet(adminKeypair);
-    }
-
-    [this.authorityPda] = PublicKey.findProgramAddressSync(
-      [AUTHORITY_SEED],
-      config.programId
-    );
-    [this.vaultPda] = PublicKey.findProgramAddressSync(
-      [VAULT_SEED],
-      config.programId
-    );
-    [this.configPda] = PublicKey.findProgramAddressSync(
-      [PROTOCOL_CONFIG_SEED],
-      config.programId
-    );
-  }
-
-  async init(idlPath: string): Promise<void> {
+  async estimateDeploymentCost(binaryPath: string): Promise<number> {
     try {
-      const idlContent = await fs.readFile(idlPath, 'utf8');
-      const idl = JSON.parse(idlContent) as Idl;
+      const stats = await fs.stat(binaryPath);
+      const fileSize = stats.size;
       
-      // Create provider for Anchor 0.31.1
-      const opts: ConfirmOptions = {
-        preflightCommitment: 'confirmed',
-        commitment: 'confirmed',
-      };
+      // Base cost for creating program account
+      // Approximately 1 lamport per byte + rent exemption
+      const rentExemptionBase = 0.01; // Base rent exemption in SOL
+      const byteCost = fileSize * 0.00000348; // Cost per byte in SOL
+      const transactionFees = 0.001; // Estimated transaction fees
       
-      const provider = new AnchorProvider(
-        this.connection,
-        this.deployerWallet,
-        opts
-      );
+      // Add buffer for compute units and other costs
+      const totalCost = rentExemptionBase + byteCost + transactionFees;
       
-      this.program = new Program(idl, provider);
-
-      const protocolConfig = await this.program.account['protocolConfig'].fetch(this.configPda);
-      this.deployerPda = (protocolConfig as any).deployer as PublicKey;
-
-      logger.info('Program deployer initialized', {
-        authorityPda: this.authorityPda.toBase58(),
-        deployerPda: this.deployerPda.toBase58(),
-        vaultPda: this.vaultPda.toBase58(),
-      });
+      // Round up to 4 decimal places
+      return Math.ceil(totalCost * 10000) / 10000;
     } catch (error) {
-      logger.error('Failed to initialize program deployer', { error });
+      logger.error('Error estimating deployment cost', { error });
       throw error;
     }
   }
+}
 
-  async deployProgram(
-    loanId: string,
-    binaryData: Buffer
-  ): Promise<{ programId: PublicKey; bufferAccount: PublicKey; signature: string }> {
+// ============ Solana CLI Deployer ============
+class SolanaCliDeployer {
+  private connection: Connection;
+  private deployerKeypairPath: string;
+  private cluster: string;
+
+  constructor(connection: Connection, deployerKeypairPath: string, cluster: string) {
+    this.connection = connection;
+    this.deployerKeypairPath = deployerKeypairPath;
+    this.cluster = cluster;
+  }
+
+  async deployProgram(binaryPath: string): Promise<{ programId: string; signature: string }> {
     const timer = metrics.deploymentDuration.startTimer();
 
     try {
-      logger.info(`Starting deployment for loan ${loanId}`);
+      logger.info('Deploying program using Solana CLI', { binaryPath });
 
-      const deployerBalance = await this.connection.getBalance(this.deployerPda);
-      logger.info(`Deployer PDA balance: ${deployerBalance / LAMPORTS_PER_SOL} SOL`);
+      // Generate a new program keypair
+      const programKeypair = Keypair.generate();
+      const programKeypairPath = `/tmp/program-${programKeypair.publicKey.toBase58()}.json`;
+      await fs.writeFile(programKeypairPath, JSON.stringify(Array.from(programKeypair.secretKey)));
 
-      const bufferKeypair = Keypair.generate();
-      const programId = Keypair.generate();
+      // Build the deploy command
+      const deployCommand = `${config.solanaCliPath || 'solana'} program deploy ${binaryPath} \
+        --program-id ${programKeypairPath} \
+        --keypair ${this.deployerKeypairPath} \
+        --url ${config.rpcUrl} \
+        --commitment confirmed`;
 
-      const programAccountSize = binaryData.length + 1000;
-      const rentExemption = await this.connection.getMinimumBalanceForRentExemption(
-        programAccountSize
+      logger.info('Executing deploy command', { command: deployCommand });
+
+      // Execute the deployment
+      const { stdout, stderr } = await execAsync(deployCommand);
+      
+      if (stderr && !stderr.includes('Program Id:')) {
+        throw new Error(`Deployment error: ${stderr}`);
+      }
+
+      // Parse the program ID from output
+      const programIdMatch = stdout.match(/Program Id: (\w+)/);
+      if (!programIdMatch) {
+        throw new Error('Failed to parse program ID from deployment output');
+      }
+
+      const programId = programIdMatch[1];
+      
+      // Get the latest transaction signature
+      const signatures = await this.connection.getSignaturesForAddress(
+        programKeypair.publicKey,
+        { limit: 1 }
       );
+      
+      const signature = signatures[0]?.signature || 'unknown';
 
-      const createBufferIx = SystemProgram.createAccount({
-        fromPubkey: this.deployerWallet.publicKey,
-        newAccountPubkey: bufferKeypair.publicKey,
-        lamports: rentExemption,
-        space: programAccountSize,
-        programId: BPF_LOADER_DEPRECATED_PROGRAM_ID,
-      });
+      // Clean up temporary keypair file
+      await fs.unlink(programKeypairPath);
 
-      const initBufferIx = createInitializeBufferInstruction(
-        bufferKeypair.publicKey,
-        this.deployerWallet.publicKey
-      );
-
-      const writeInstructions = createWriteBufferInstructions(
-        bufferKeypair.publicKey,
-        this.deployerWallet.publicKey,
-        binaryData
-      );
-
-      const deployIx = createDeployWithMaxDataLenInstruction(
-        this.deployerWallet.publicKey,
-        programId.publicKey,
-        bufferKeypair.publicKey,
-        this.authorityPda,
-        rentExemption,
-        binaryData.length
-      );
-
-      const tx = new Transaction();
-      tx.add(
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
-        createBufferIx,
-        initBufferIx,
-        ...writeInstructions,
-        deployIx
-      );
-
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        tx,
-        [this.deployerWallet.payer, bufferKeypair, programId],
-        { commitment: 'confirmed' }
-      );
-
-      logger.info(`Program deployed successfully`, {
-        loanId,
-        programId: programId.publicKey.toBase58(),
-        bufferAccount: bufferKeypair.publicKey.toBase58(),
-        signature,
-      });
-
+      logger.info('Program deployed successfully', { programId, signature });
       metrics.deploymentsTotal.inc({ status: 'success' });
-      return {
-        programId: programId.publicKey,
-        bufferAccount: bufferKeypair.publicKey,
-        signature,
-      };
+
+      return { programId, signature };
     } catch (error) {
-      logger.error('Failed to deploy program', { loanId, error });
+      logger.error('Failed to deploy program', { error });
       metrics.deploymentsTotal.inc({ status: 'failure' });
       throw error;
     } finally {
@@ -405,325 +404,413 @@ class ProgramDeployer {
     }
   }
 
-  async setDeployedProgram(loanId: string, programPubkey: PublicKey): Promise<string> {
-    if (!this.adminWallet) {
-      throw new Error('Admin wallet not configured for set_deployed_program');
-    }
-
+  async closeProgram(programId: string): Promise<{ signature: string }> {
     try {
-      const loanIdBn = new anchor.BN(loanId);
-      const tx = await this.program.methods
-        .setDeployedProgram(loanIdBn, programPubkey)
-        .accounts({
-          admin: this.adminWallet.publicKey,
-          protocolConfig: this.configPda,
-          loan: this.getLoanPda(loanId),
-        })
-        .signers([this.adminWallet.payer])
-        .rpc();
+      logger.info('Closing program using Solana CLI', { programId });
 
-      logger.info('Set deployed program', { loanId, programPubkey: programPubkey.toBase58(), tx });
-      return tx;
-    } catch (error) {
-      logger.error('Failed to set deployed program', { loanId, error });
-      throw error;
-    }
-  }
+      const closeCommand = `${config.solanaCliPath || 'solana'} program close ${programId} \
+        --keypair ${this.deployerKeypairPath} \
+        --url ${config.rpcUrl} \
+        --commitment confirmed`;
 
-  async closeProgram(
-    loanId: string,
-    programId: PublicKey
-  ): Promise<{ reclaimedSol: number; signature: string }> {
-    try {
-      logger.info(`Closing program for loan ${loanId}`, { programId: programId.toBase58() });
-
-      const programAccountInfo = await this.connection.getAccountInfo(programId);
-      if (!programAccountInfo) {
-        throw new Error('Program account not found');
+      const { stdout, stderr } = await execAsync(closeCommand);
+      
+      if (stderr && !stderr.includes('closed')) {
+        throw new Error(`Close error: ${stderr}`);
       }
 
-      const programDataAddress = new PublicKey(programAccountInfo.data.slice(4, 36));
+      // Parse signature from output if available
+      const signatureMatch = stdout.match(/Signature: (\w+)/);
+      const signature = signatureMatch ? signatureMatch[1] : 'unknown';
 
-      const closeIx = createCloseAccountInstruction(
-        programDataAddress,
-        this.deployerPda,
-        this.authorityPda,
-        programId
-      );
-
-      const tx = new Transaction().add(closeIx);
-      const signature = await sendAndConfirmTransaction(
-        this.connection,
-        tx,
-        [this.deployerWallet.payer],
-        { commitment: 'confirmed' }
-      );
-
-      const afterBalance = await this.connection.getBalance(this.deployerPda);
-
-      logger.info('Program closed successfully', {
-        loanId,
-        programId: programId.toBase58(),
-        signature,
-        reclaimedSol: afterBalance / LAMPORTS_PER_SOL,
-      });
-
+      logger.info('Program closed successfully', { programId, signature });
       metrics.recoveryTotal.inc({ status: 'success' });
-      return { reclaimedSol: afterBalance / LAMPORTS_PER_SOL, signature };
+
+      return { signature };
     } catch (error) {
-      logger.error('Failed to close program', { loanId, error });
+      logger.error('Failed to close program', { error });
       metrics.recoveryTotal.inc({ status: 'failure' });
       throw error;
     }
   }
 
-  async returnReclaimedSol(loanId: string, amount: number): Promise<string> {
-    try {
-      const amountLamports = new anchor.BN(amount * LAMPORTS_PER_SOL);
-
-      const tx = await this.program.methods
-        .returnReclaimedSol(amountLamports)
-        .accounts({
-          caller: this.deployerWallet.publicKey,
-          protocolConfig: this.configPda,
-          loan: this.getLoanPda(loanId),
-          vault: this.vaultPda,
-          deployerPda: this.deployerPda,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([this.deployerWallet.payer])
-        .rpc();
-
-      logger.info('Returned reclaimed SOL to vault', { loanId, amount, tx });
-      return tx;
-    } catch (error) {
-      logger.error('Failed to return reclaimed SOL', { loanId, error });
-      throw error;
-    }
-  }
-
-  async getLoanAccount(loanId: string): Promise<any> {
-    const loanPda = this.getLoanPda(loanId);
-    return await this.program.account['loan'].fetch(loanPda);
-  }
-
-  private getLoanPda(loanId: string): PublicKey {
-    const loanIdBn = new anchor.BN(loanId);
-    const [loanPda] = PublicKey.findProgramAddressSync(
-      [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8)],
-      this.program.programId
-    );
-    return loanPda;
-  }
-
-  getProgram(): SolignitionProgram {
-    return this.program;
+  async getAccountBalance(pubkey: PublicKey): Promise<number> {
+    const balance = await this.connection.getBalance(pubkey);
+    return balance / LAMPORTS_PER_SOL;
   }
 }
 
-// ============ Event Monitor ============
-class EventMonitor extends EventEmitter {
-  private connection: Connection;
-  private program: SolignitionProgram;
-  private subscriptionId?: number;
-  private stateManager: StateManager;
+// ============ GraphQL Client ============
+class GraphQLMonitor extends EventEmitter {
+  private client: GraphQLClient;
+  private stateManager: any;
   private isRunning: boolean = false;
+  private pollInterval: NodeJS.Timeout | null = null;
+  private processedLoans: Set<string> = new Set();
+  private logger: winston.Logger;
 
-  constructor(connection: Connection, program: SolignitionProgram, stateManager: StateManager) {
+  constructor(endpoint: string, stateManager: StateManager,logger: winston.Logger) {
     super();
-    this.connection = connection;
-    this.program = program;
+    this.client = new GraphQLClient(endpoint);
     this.stateManager = stateManager;
+    this.logger = logger;
   }
 
   async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    logger.info('Starting event monitor');
-
-    this.subscriptionId = this.connection.onLogs(
-      config.programId,
-      async (logs) => {
-        try {
-          await this.processLogs(logs);
-        } catch (error) {
-          logger.error('Error processing logs', { error });
-        }
-      },
-      'confirmed'
-    );
-
+    logger.info('Starting GraphQL monitor');
+    // Load previously processed loans
+    await this.loadProcessedLoans();
     this.startPolling();
+  }
+
+  private async loadProcessedLoans(): Promise<void> {
+    try {
+      const deployments = await this.stateManager.getAllDeployments();
+      deployments.forEach(d => {
+        this.processedLoans.add(d.loanId);
+      });
+      this.logger.info(`Loaded ${this.processedLoans.size} processed loans`);
+    } catch (error) {
+      this.logger.error('Error loading processed loans', { error });
+    }
   }
 
   async stop(): Promise<void> {
     this.isRunning = false;
-    if (this.subscriptionId) {
-      await this.connection.removeOnLogsListener(this.subscriptionId);
-    }
-  }
-
-  private async processLogs(logs: any): Promise<void> {
-    const { signature, logs: logMessages } = logs;
-
-    for (const log of logMessages) {
-      if (log.includes('Program log: LoanRequested')) {
-        await this.handleLoanRequested(signature);
-      } else if (log.includes('Program log: LoanRecovered')) {
-        await this.handleLoanRecovered(signature);
-      }
-    }
-  }
-
-  private async handleLoanRequested(signature: string): Promise<void> {
-    try {
-      const tx = await this.connection.getParsedTransaction(signature, {
-        commitment: 'confirmed',
-        maxSupportedTransactionVersion: 0,
-      });
-
-      if (!tx || !tx.meta) return;
-
-      // For Anchor 0.31.1, parse events from logs
-      const eventParser = new EventParser(config.programId, this.program.coder);
-      
-      try {
-        const events = eventParser.parseLogs(tx.meta.logMessages || []);
-        
-        for (const event of events) {
-          if (event.name === 'LoanRequested') {
-            const data = event.data as LoanRequestedEvent;
-            this.emit('loanRequested', {
-              loanId: data.loanId.toString(),
-              borrower: data.borrower.toBase58(),
-              principal: data.principal.toString(),
-              duration: data.duration.toString(),
-              interestRateBps: data.interestRateBps,
-              adminFee: data.adminFee.toString(),
-            });
-          }
-        }
-      } catch (parseError) {
-        logger.debug('No events found in transaction logs', { signature });
-      }
-    } catch (error) {
-      logger.error('Error handling loan requested event', { signature, error });
-    }
-  }
-
-  private async handleLoanRecovered(signature: string): Promise<void> {
-    try {
-      const tx = await this.connection.getParsedTransaction(signature, {
-        commitment: 'confirmed',
-        maxSupportedTransactionVersion: 0,
-      });
-
-      if (!tx || !tx.meta) return;
-
-      const eventParser = new EventParser(config.programId, this.program.coder);
-      
-      try {
-        const events = eventParser.parseLogs(tx.meta.logMessages || []);
-
-        for (const event of events) {
-          if (event.name === 'LoanRecovered') {
-            const data = event.data as LoanRecoveredEvent;
-            this.emit('loanRecovered', {
-              loanId: data.loanId.toString(),
-            });
-          }
-        }
-      } catch (parseError) {
-        logger.debug('No events found in transaction logs', { signature });
-      }
-    } catch (error) {
-      logger.error('Error handling loan recovered event', { signature, error });
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
     }
   }
 
   private startPolling(): void {
-    setInterval(async () => {
+    this.pollInterval = setInterval(async () => {
       if (!this.isRunning) return;
       
       try {
-        await this.checkExpiredLoans();
+        await this.checkForNewLoans();
+        //await this.checkLoanStates();
       } catch (error) {
-        logger.error('Error in polling cycle', { error });
+        logger.error('Error in GraphQL polling cycle', { error });
       }
     }, config.pollIntervalMs);
+
+    // Initial check
+    this.checkForNewLoans();
   }
 
-  private async checkExpiredLoans(): Promise<void> {
-    const deployments = await this.stateManager.getAllDeployments();
-    const activeLoans = deployments.filter(d => d.status === 'deployed');
-
-    for (const deployment of activeLoans) {
-      try {
-        const loan = await this.program.account['loan'].fetch(
-          this.getLoanPda(deployment.loanId)
-        );
-
-        const now = Date.now() / 1000;
-        const expiry = (loan as any).startTs.toNumber() + (loan as any).duration.toNumber();
-
-        if (now >= expiry && (loan as any).state === LoanState.Active) {
-          logger.info(`Loan ${deployment.loanId} has expired`);
-          this.emit('loanExpired', { loanId: deployment.loanId });
-        }
-      } catch (error) {
-        logger.error(`Error checking loan ${deployment.loanId}`, { error });
+  private async checkForNewLoans(): Promise<void> {
+    const query = gql`
+      query GetLoans {
+        loanRequested {
+    adminFee
+    borrower
+    duration
+    interestRateBps
+    loanId
+    principal
+    slot
+    transactionSignature
+  }
       }
+    `;
+
+    try {
+      const response = await this.client.request<{ loanRequested: LoanRequestedData[] }>(query);
+      
+      if (!response.loanRequested || !Array.isArray(response.loanRequested)) {
+        this.logger.warn('Invalid response structure from GraphQL', { response });
+        return;
+      }
+
+      this.logger.debug(`Fetched ${response.loanRequested.length} loan requests from GraphQL`);
+      
+      for (const loan of response.loanRequested) {
+        // Check if this loan has already been processed
+        if (this.processedLoans.has(loan.loanId)) {
+          continue;
+        }
+
+        // Check if there's already a deployment record
+        const existingDeployment = await this.stateManager.getDeployment(loan.loanId);
+        
+        if (!existingDeployment || existingDeployment.status === 'failed') {
+          this.logger.info('New loan detected for deployment', { 
+            loanId: loan.loanId,
+            borrower: loan.borrower,
+            principal: loan.principal,
+            transactionSignature: loan.transactionSignature
+          });
+
+          // Emit event for new loan
+          this.emit('loanRequested', {
+            loanId: loan.loanId,
+            borrower: loan.borrower,
+            principal: loan.principal,
+            duration: loan.duration,
+            interestRateBps: loan.interestRateBps,
+            adminFee: loan.adminFee,
+            transactionSignature: loan.transactionSignature
+          });
+          
+          // Mark as processed
+          this.processedLoans.add(loan.loanId);
+          
+          // Save last processed loan ID
+          await this.stateManager.setLastProcessedLoanId(loan.loanId);
+        }
+      }
+
+      // Update metrics
+      const activeLoans = response.loanRequested.length;
+      this.logger.debug(`Active loans: ${activeLoans}`);
+      
+    } catch (error) {
+      this.logger.error('Failed to fetch loan requests from GraphQL', { 
+        error: error instanceof Error ? error.message : error 
+      });
     }
+  }
+/*
+  private async checkLoanStates(): Promise<void> {
+    const query = gql`
+      query GetLoanStates {
+        loans {
+          loanId
+          state
+          deployedProgram
+        }
+      }
+    `;
 
-    metrics.activeLoans.set(activeLoans.length);
+    try {
+      const data = await this.client.request<{ loans: LoanData[] }>(query);
+      
+      for (const loan of data.loans) {
+        const deployment = await this.stateManager.getDeployment(loan.loanId);
+        
+        if (deployment && deployment.status === 'deployed') {
+          // Check if loan has been repaid or recovered
+          if (loan.state === 1 || loan.state === 2) { // Repaid or Recovered
+            logger.info('Loan state changed, triggering recovery', { 
+              loanId: loan.loanId, 
+              state: loan.state 
+            });
+            this.emit('loanRecovered', { loanId: loan.loanId });
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to check loan states', { error });
+    }
+  }
+    */
+
+  async getProtocolConfig(): Promise<any> {
+    const query = gql`
+      query GetProtocolConfig {
+        protocolConfig {
+    admin
+    adminFeeSplitBps
+    defaultAdminFeeBps
+    defaultInterestRateBps
+    deployer
+    isPaused
+    lamports
+    loanCounter
+    owner
+    pubkey
+    slot
+    totalDeposits
+    totalLoansOutstanding
+    totalYieldDistributed
+    treasury
+   }
+      }
+    `;
+
+    try {
+      const response = await this.client.request<{ protocolConfig: ProtocolConfigData[] }>(query);
+      
+      if (!response.protocolConfig || !Array.isArray(response.protocolConfig)) {
+        this.logger.warn('Invalid protocol config response', { response });
+        return null;
+      }
+
+      // Get the latest protocol config (highest slot)
+      const latestConfig = response.protocolConfig.reduce((latest, current) => {
+        return current.slot > latest.slot ? current : latest;
+      }, response.protocolConfig[0]);
+
+      this.logger.info('Fetched protocol config', {
+        loanCounter: latestConfig.loanCounter,
+        totalLoansOutstanding: latestConfig.totalLoansOutstanding,
+        isPaused: latestConfig.isPaused,
+        slot: latestConfig.slot
+      });
+
+      return latestConfig;
+    } catch (error) {
+      this.logger.error('Failed to fetch protocol config', { error });
+      return null;
+    }
   }
 
-  private getLoanPda(loanId: string): PublicKey {
-    const loanIdBn = new anchor.BN(loanId);
-    const [loanPda] = PublicKey.findProgramAddressSync(
-      [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8)],
-      this.program.programId
-    );
-    return loanPda;
+  // Optional: Method to check loan states if you implement that query later
+  async checkLoanStates(): Promise<void> {
+    // This would be implemented when you have a loan state query
+    // For now, you might need to check on-chain or track states locally
+    this.logger.debug('Loan state checking not yet implemented in GraphQL');
   }
+
+  // Get specific loan by ID
+  async getLoanById(loanId: string): Promise<LoanRequestedData | null> {
+    const query = gql`
+      query GetLoanById($loanId: String!) {
+        loanRequested(where: { loanId: { _eq: $loanId } }) {
+          loanId
+          borrower
+          principal
+          duration
+          interestRateBps
+          adminFee
+          slot
+          transactionSignature
+        }
+      }
+    `;
+
+    try {
+      const response = await this.client.request<{ loanRequested: LoanRequestedData[] }>(
+        query, 
+        { loanId }
+      );
+      
+      if (response.loanRequested && response.loanRequested.length > 0) {
+        return response.loanRequested[0];
+      }
+      
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to fetch loan by ID', { loanId, error });
+      return null;
+    }
+  }
+
+  // Get loans for a specific borrower
+  async getLoansByBorrower(borrower: string): Promise<LoanRequestedData[]> {
+    const query = gql`
+      query GetLoansByBorrower($borrower: String!) {
+        loanRequested(where: { borrower: { _eq: $borrower } }) {
+          loanId
+          borrower
+          principal
+          duration
+          interestRateBps
+          adminFee
+          slot
+          transactionSignature
+        }
+      }
+    `;
+
+    try {
+      const response = await this.client.request<{ loanRequested: LoanRequestedData[] }>(
+        query, 
+        { borrower }
+      );
+      
+      return response.loanRequested || [];
+    } catch (error) {
+      this.logger.error('Failed to fetch loans by borrower', { borrower, error });
+      return [];
+    }
+  }
+
+  // Get recent loans
+  async getRecentLoans(limit: number = 10): Promise<LoanRequestedData[]> {
+    const query = gql`
+      query GetRecentLoans($limit: Int!) {
+        loanRequested(order_by: { slot: desc }, limit: $limit) {
+          loanId
+          borrower
+          principal
+          duration
+          interestRateBps
+          adminFee
+          slot
+          transactionSignature
+        }
+      }
+    `;
+
+    try {
+      const response = await this.client.request<{ loanRequested: LoanRequestedData[] }>(
+        query, 
+        { limit }
+      );
+      
+      return response.loanRequested || [];
+    } catch (error) {
+      this.logger.error('Failed to fetch recent loans', { error });
+      return [];
+    }
+  }
+
+  // Check if protocol is paused
+  async isProtocolPaused(): Promise<boolean> {
+    const config = await this.getProtocolConfig();
+    return config ? config.isPaused === 1 : false;
+  }
+
+  // Get total loans outstanding
+  async getTotalLoansOutstanding(): Promise<string> {
+    const config = await this.getProtocolConfig();
+    return config ? config.totalLoansOutstanding : '0';
+  }
+
 }
 
 // ============ Orchestrator ============
 class DeployerOrchestrator {
   private stateManager: StateManager;
   private binaryManager: BinaryManager;
-  private programDeployer: ProgramDeployer;
-  private eventMonitor: EventMonitor;
+  private solanaDeployer: SolanaCliDeployer;
+  private graphqlMonitor: GraphQLMonitor;
   private connection: Connection;
+  private program: Program<Idl>;
+  private deployerWallet: Wallet;
 
   constructor(
     connection: Connection,
     stateManager: StateManager,
     binaryManager: BinaryManager,
-    programDeployer: ProgramDeployer,
-    eventMonitor: EventMonitor
+    solanaDeployer: SolanaCliDeployer,
+    graphqlMonitor: GraphQLMonitor,
+    program: Program<Idl>,
+    deployerWallet: Wallet
   ) {
     this.connection = connection;
     this.stateManager = stateManager;
     this.binaryManager = binaryManager;
-    this.programDeployer = programDeployer;
-    this.eventMonitor = eventMonitor;
+    this.solanaDeployer = solanaDeployer;
+    this.graphqlMonitor = graphqlMonitor;
+    this.program = program;
+    this.deployerWallet = deployerWallet;
 
     this.setupEventHandlers();
   }
 
   private setupEventHandlers(): void {
-    this.eventMonitor.on('loanRequested', async (event) => {
+    this.graphqlMonitor.on('loanRequested', async (event) => {
       await this.handleLoanRequested(event);
     });
 
-    this.eventMonitor.on('loanRecovered', async (event) => {
+    this.graphqlMonitor.on('loanRecovered', async (event) => {
       await this.handleLoanRecovered(event);
-    });
-
-    this.eventMonitor.on('loanExpired', async (event) => {
-      await this.handleLoanExpired(event);
     });
   }
 
@@ -731,6 +818,13 @@ class DeployerOrchestrator {
     const { loanId, borrower, principal } = event;
 
     logger.info('Processing loan requested event', { loanId, borrower, principal });
+
+    // Check if we have a file upload for this borrower
+    const fileUpload = await this.stateManager.getFileUploadByBorrower(borrower);
+    if (!fileUpload) {
+      logger.error('No file upload found for borrower', { borrower });
+      return;
+    }
 
     let deployment = await this.stateManager.getDeployment(loanId);
     if (deployment && deployment.status !== 'failed') {
@@ -742,11 +836,17 @@ class DeployerOrchestrator {
       loanId,
       borrower,
       principal,
+      binaryPath: fileUpload.filePath,
+      binaryHash: fileUpload.binaryHash,
       status: 'pending',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     await this.stateManager.saveDeployment(deployment);
+
+    // Update file upload status
+    fileUpload.status = 'deployed';
+    await this.stateManager.saveFileUpload(fileUpload);
 
     await this.processDeploymentWithRetries(deployment);
   }
@@ -781,32 +881,24 @@ class DeployerOrchestrator {
   }
 
   private async processDeployment(deployment: DeploymentRecord): Promise<void> {
-    const { loanId, borrower } = deployment;
+    const { loanId, binaryPath } = deployment;
+
+    if (!binaryPath) {
+      throw new Error('No binary path specified for deployment');
+    }
 
     deployment.status = 'deploying';
     deployment.updatedAt = Date.now();
     await this.stateManager.saveDeployment(deployment);
 
-    const binaryData = await this.fetchBinaryForLoan(loanId, borrower);
+    // Deploy using Solana CLI
+    const { programId, signature } = await this.solanaDeployer.deployProgram(binaryPath);
 
-    const validation = await this.binaryManager.validateBinary(binaryData);
-    if (!validation.valid) {
-      throw new Error(`Binary validation failed: ${validation.reason}`);
-    }
-
-    const binaryHash = await this.binaryManager.storeBinary(loanId, binaryData);
-    deployment.binaryHash = binaryHash;
-
-    const { programId, bufferAccount, signature } = await this.programDeployer.deployProgram(
-      loanId,
-      binaryData
-    );
-
-    deployment.programId = programId.toBase58();
-    deployment.bufferAccount = bufferAccount.toBase58();
+    deployment.programId = programId;
     deployment.deployTxSignature = signature;
 
-    const setTx = await this.programDeployer.setDeployedProgram(loanId, programId);
+    // Update the on-chain loan with deployed program
+    const setTx = await this.setDeployedProgram(loanId, new PublicKey(programId));
     deployment.setDeployedTxSignature = setTx;
 
     deployment.status = 'deployed';
@@ -815,16 +907,41 @@ class DeployerOrchestrator {
 
     logger.info('Deployment completed successfully', {
       loanId,
-      programId: programId.toBase58(),
+      programId,
     });
   }
 
-  private async handleLoanRecovered(event: any): Promise<void> {
-    const { loanId } = event;
-    await this.processRecovery(loanId);
+  private async setDeployedProgram(loanId: string, programPubkey: PublicKey): Promise<string> {
+    try {
+      const loanIdBn = new anchor.BN(loanId);
+      const [configPda] = PublicKey.findProgramAddressSync(
+        [PROTOCOL_CONFIG_SEED],
+        this.program.programId
+      );
+      const [loanPda] = PublicKey.findProgramAddressSync(
+        [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8)],
+        this.program.programId
+      );
+
+      const tx = await this.program.methods
+        .setDeployedProgram(loanIdBn, programPubkey)
+        .accounts({
+          admin: this.deployerWallet.publicKey,
+          protocolConfig: configPda,
+          loan: loanPda,
+        })
+        .signers([this.deployerWallet.payer])
+        .rpc();
+
+      logger.info('Set deployed program', { loanId, programPubkey: programPubkey.toBase58(), tx });
+      return tx;
+    } catch (error) {
+      logger.error('Failed to set deployed program', { loanId, error });
+      throw error;
+    }
   }
 
-  private async handleLoanExpired(event: any): Promise<void> {
+  private async handleLoanRecovered(event: any): Promise<void> {
     const { loanId } = event;
     await this.processRecovery(loanId);
   }
@@ -844,15 +961,8 @@ class DeployerOrchestrator {
       await this.stateManager.saveDeployment(deployment);
 
       if (deployment.programId) {
-        const { reclaimedSol, signature } = await this.programDeployer.closeProgram(
-          loanId,
-          new PublicKey(deployment.programId)
-        );
-
-        const returnTx = await this.programDeployer.returnReclaimedSol(
-          loanId,
-          reclaimedSol
-        );
+        // Close program using Solana CLI
+        const { signature } = await this.solanaDeployer.closeProgram(deployment.programId);
 
         deployment.recoveryTxSignature = signature;
         deployment.status = 'recovered';
@@ -861,7 +971,6 @@ class DeployerOrchestrator {
 
         logger.info('Recovery completed successfully', {
           loanId,
-          reclaimedSol,
           signature,
         });
       }
@@ -873,38 +982,55 @@ class DeployerOrchestrator {
     }
   }
 
-  private async fetchBinaryForLoan(loanId: string, borrower: string): Promise<Buffer> {
-    const dummyBinaryPath = path.join(config.binaryStoragePath, 'test-program.so');
-    try {
-      return await fs.readFile(dummyBinaryPath);
-    } catch {
-      throw new Error('Binary not found for loan. Implement binary retrieval logic.');
-    }
-  }
-
   async start(): Promise<void> {
-    await this.eventMonitor.start();
+    await this.graphqlMonitor.start();
     logger.info('Deployer orchestrator started');
   }
 
   async stop(): Promise<void> {
-    await this.eventMonitor.stop();
+    await this.graphqlMonitor.stop();
     logger.info('Deployer orchestrator stopped');
   }
 }
 
-// ============ Health/Metrics Server ============
-class HealthServer {
+
+// ============ API Server ============
+class ApiServer {
   private app: express.Application;
   private stateManager: StateManager;
+  private binaryManager: BinaryManager;
+  private upload: multer.Multer;
 
-  constructor(stateManager: StateManager) {
+  constructor(stateManager: StateManager, binaryManager: BinaryManager) {
     this.app = express();
     this.stateManager = stateManager;
+    this.binaryManager = binaryManager;
+    
+    // Configure multer for file uploads
+    this.upload = multer({
+      dest: config.uploadPath,
+      limits: {
+        fileSize: 100 * 1024 * 1024, // 100MB limit
+      },
+      fileFilter: (req, file, cb) => {
+        if (path.extname(file.originalname) !== '.so') {
+          return cb(new Error('Only .so files are allowed'));
+        }
+        cb(null, true);
+      },
+    });
+
+    this.setupMiddleware();
     this.setupRoutes();
   }
 
+  private setupMiddleware(): void {
+    this.app.use(cors());
+    this.app.use(express.json());
+  }
+
   private setupRoutes(): void {
+    // Health check
     this.app.get('/health', async (req, res) => {
       try {
         const deployments = await this.stateManager.getAllDeployments();
@@ -921,11 +1047,92 @@ class HealthServer {
       }
     });
 
+    // Metrics endpoint
     this.app.get('/metrics', async (req, res) => {
       res.set('Content-Type', registry.contentType);
       res.end(await registry.metrics());
     });
 
+    // Upload .so file and calculate deployment cost
+    this.app.post('/upload', this.upload.single('file'), async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const { borrower } = req.body;
+        if (!borrower) {
+          return res.status(400).json({ error: 'Borrower address required' });
+        }
+
+        logger.info('File uploaded', {
+          fileName: req.file.originalname,
+          size: req.file.size,
+          borrower,
+        });
+
+        // Validate the binary
+        const binaryData = await fs.readFile(req.file.path);
+        const validation = await this.binaryManager.validateBinary(binaryData);
+        
+        if (!validation.valid) {
+          await fs.unlink(req.file.path);
+          return res.status(400).json({ 
+            error: `Invalid binary: ${validation.reason}` 
+          });
+        }
+
+        // Generate file ID and store binary
+        const fileId = createHash('sha256')
+          .update(borrower + Date.now())
+          .digest('hex')
+          .substring(0, 16);
+
+        const { hash, destinationPath } = await this.binaryManager.storeBinary(
+          fileId, 
+          req.file.path
+        );
+
+        // Estimate deployment cost
+        const estimatedCost = await this.binaryManager.estimateDeploymentCost(destinationPath);
+
+        // Save file upload record
+        const fileUpload: FileUploadRecord = {
+          fileId,
+          borrower,
+          fileName: req.file.originalname,
+          filePath: destinationPath,
+          fileSize: req.file.size,
+          binaryHash: hash,
+          estimatedCost,
+          status: 'ready',
+          createdAt: Date.now(),
+        };
+
+        await this.stateManager.saveFileUpload(fileUpload);
+
+        // Clean up temp file
+        await fs.unlink(req.file.path);
+
+        metrics.fileUploads.inc();
+
+        res.json({
+          success: true,
+          fileId,
+          estimatedCost,
+          binaryHash: hash,
+          message: 'File uploaded successfully. You can now request a loan for deployment.',
+        });
+      } catch (error) {
+        logger.error('Error handling file upload', { error });
+        if (req.file) {
+          await fs.unlink(req.file.path).catch(() => {});
+        }
+        res.status(500).json({ error: String(error) });
+      }
+    });
+
+    // Get deployment status
     this.app.get('/deployments/:loanId', async (req, res) => {
       try {
         const deployment = await this.stateManager.getDeployment(req.params.loanId);
@@ -937,115 +1144,39 @@ class HealthServer {
         res.status(500).json({ error: String(error) });
       }
     });
+
+    // Get all deployments for a borrower
+    this.app.get('/deployments/borrower/:borrower', async (req, res) => {
+      try {
+        const allDeployments = await this.stateManager.getAllDeployments();
+        const borrowerDeployments = allDeployments.filter(
+          d => d.borrower === req.params.borrower
+        );
+        res.json(borrowerDeployments);
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
+    });
+
+    // Get file upload status
+    this.app.get('/uploads/:fileId', async (req, res) => {
+      try {
+        const upload = await this.stateManager.getFileUpload(req.params.fileId);
+        if (!upload) {
+          return res.status(404).json({ error: 'Upload not found' });
+        }
+        res.json(upload);
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
+    });
   }
 
   start(port: number): void {
     this.app.listen(port, () => {
-      logger.info(`Health server listening on port ${port}`);
+      logger.info(`API server listening on port ${port}`);
     });
   }
-}
-
-// ============ Helper Functions ============
-function createInitializeBufferInstruction(
-  buffer: PublicKey,
-  authority: PublicKey
-): TransactionInstruction {
-  const keys = [
-    { pubkey: buffer, isSigner: false, isWritable: true },
-    { pubkey: authority, isSigner: false, isWritable: false },
-  ];
-  
-  return new TransactionInstruction({
-    keys,
-    programId: BPF_LOADER_DEPRECATED_PROGRAM_ID,
-    data: Buffer.from([0]),
-  });
-}
-
-function createWriteBufferInstructions(
-  buffer: PublicKey,
-  authority: PublicKey,
-  data: Buffer
-): TransactionInstruction[] {
-  const instructions: TransactionInstruction[] = [];
-  const chunkSize = 900;
-
-  for (let offset = 0; offset < data.length; offset += chunkSize) {
-    const chunk = data.slice(offset, Math.min(offset + chunkSize, data.length));
-    
-    const keys = [
-      { pubkey: buffer, isSigner: false, isWritable: true },
-      { pubkey: authority, isSigner: true, isWritable: false },
-    ];
-
-    const instructionData = Buffer.concat([
-      Buffer.from([1]),
-      Buffer.from(new Uint32Array([offset]).buffer),
-      chunk,
-    ]);
-
-    instructions.push(
-      new TransactionInstruction({
-        keys,
-        programId: BPF_LOADER_DEPRECATED_PROGRAM_ID,
-        data: instructionData,
-      })
-    );
-  }
-
-  return instructions;
-}
-
-function createDeployWithMaxDataLenInstruction(
-  payer: PublicKey,
-  programId: PublicKey,
-  buffer: PublicKey,
-  upgradeAuthority: PublicKey,
-  lamports: number,
-  dataLen: number
-): TransactionInstruction {
-  const keys = [
-    { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: programId, isSigner: true, isWritable: true },
-    { pubkey: buffer, isSigner: false, isWritable: true },
-    { pubkey: upgradeAuthority, isSigner: false, isWritable: false },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-  ];
-
-  const data = Buffer.concat([
-    Buffer.from([2]),
-    Buffer.from(new Uint32Array([dataLen]).buffer),
-  ]);
-
-  return new TransactionInstruction({
-    keys,
-    programId: BPF_LOADER_DEPRECATED_PROGRAM_ID,
-    data,
-  });
-}
-
-function createCloseAccountInstruction(
-  account: PublicKey,
-  recipient: PublicKey,
-  authority: PublicKey,
-  program?: PublicKey
-): TransactionInstruction {
-  const keys = [
-    { pubkey: account, isSigner: false, isWritable: true },
-    { pubkey: recipient, isSigner: false, isWritable: true },
-    { pubkey: authority, isSigner: true, isWritable: false },
-  ];
-
-  if (program) {
-    keys.push({ pubkey: program, isSigner: false, isWritable: true });
-  }
-
-  return new TransactionInstruction({
-    keys,
-    programId: BPF_LOADER_DEPRECATED_PROGRAM_ID,
-    data: Buffer.from([4]),
-  });
 }
 
 // ============ Main Application ============
@@ -1058,24 +1189,9 @@ async function main() {
   });
 
   try {
-    // Validate configuration
-    logger.info('Validating configuration...');
-    
-    // Check if keypair files exist
-    try {
-      await fs.access(config.deployerKeypairPath);
-      logger.info(`Deployer keypair found: ${config.deployerKeypairPath}`);
-    } catch {
-      throw new Error(`Deployer keypair not found at: ${config.deployerKeypairPath}`);
-    }
-
-    // Check if IDL file exists
-    try {
-      await fs.access(config.idlPath);
-      logger.info(`IDL file found: ${config.idlPath}`);
-    } catch {
-      throw new Error(`IDL file not found at: ${config.idlPath}`);
-    }
+    // Initialize directories
+    await fs.mkdir(config.binaryStoragePath, { recursive: true });
+    await fs.mkdir(config.uploadPath, { recursive: true });
 
     // Initialize connection
     const connection = new Connection(config.rpcUrl, {
@@ -1095,53 +1211,64 @@ async function main() {
       new Uint8Array(JSON.parse(deployerKeypairData))
     );
     logger.info(`Deployer public key: ${deployerKeypair.publicKey.toBase58()}`);
+
+    // Initialize Anchor program
+    const idlContent = await fs.readFile(config.idlPath, 'utf8');
+    const idl = JSON.parse(idlContent) as Idl;
     
-    let adminKeypair: Keypair | undefined;
-    if (config.adminKeypairPath) {
-      try {
-        await fs.access(config.adminKeypairPath);
-        const adminKeypairData = await fs.readFile(config.adminKeypairPath, 'utf8');
-        adminKeypair = Keypair.fromSecretKey(
-          new Uint8Array(JSON.parse(adminKeypairData))
-        );
-        logger.info(`Admin public key: ${adminKeypair.publicKey.toBase58()}`);
-      } catch (error) {
-        logger.warn('Admin keypair not found, some operations may fail', { error });
-      }
-    }
+    const opts: ConfirmOptions = {
+      preflightCommitment: 'confirmed',
+      commitment: 'confirmed',
+    };
+    
+    const deployerWallet = new Wallet(deployerKeypair);
+    const provider = new AnchorProvider(connection, deployerWallet, opts);
+    const program = new Program(idl, provider);
 
     // Initialize components
     logger.info('Initializing components...');
     const stateManager = new StateManager(config.dbPath);
-    const binaryManager = new BinaryManager(config.binaryStoragePath);
+    const binaryManager = new BinaryManager(config.binaryStoragePath, config.uploadPath);
     await binaryManager.init();
 
-    const programDeployer = new ProgramDeployer(
+    const solanaDeployer = new SolanaCliDeployer(
       connection,
-      deployerKeypair,
-      adminKeypair
+      config.deployerKeypairPath,
+      config.cluster
     );
-    await programDeployer.init(config.idlPath);
 
-    const program = programDeployer.getProgram();
-    const eventMonitor = new EventMonitor(connection, program, stateManager);
+    const graphqlMonitor = new GraphQLMonitor(
+      config.graphqlEndpoint,
+      stateManager,
+      logger
+    );
 
     const orchestrator = new DeployerOrchestrator(
       connection,
       stateManager,
       binaryManager,
-      programDeployer,
-      eventMonitor
+      solanaDeployer,
+      graphqlMonitor,
+      program,
+      deployerWallet
     );
 
-    // Start health server
-    const healthServer = new HealthServer(stateManager);
-    healthServer.start(config.port);
+    // Start API server
+    const apiServer = new ApiServer(stateManager, binaryManager);
+    apiServer.start(config.port);
 
     // Start orchestrator
     await orchestrator.start();
 
     logger.info('Deployer service started successfully');
+
+    // Test GraphQL connection
+    try {
+      const protocolConfig = await graphqlMonitor.getProtocolConfig();
+      logger.info('GraphQL connection successful', { protocolConfig });
+    } catch (error) {
+      logger.warn('Could not fetch protocol config from GraphQL', { error });
+    }
 
     // Handle graceful shutdown
     const shutdown = async () => {
@@ -1173,8 +1300,9 @@ if (require.main === module) {
 
 export {
   DeployerOrchestrator,
-  ProgramDeployer,
-  EventMonitor,
+  SolanaCliDeployer,
+  GraphQLMonitor,
   StateManager,
   BinaryManager,
+  ApiServer,
 };

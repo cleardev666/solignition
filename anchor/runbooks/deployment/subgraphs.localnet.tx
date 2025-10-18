@@ -107,3 +107,29 @@ action "solignition_withdrawn" "svm::deploy_subgraph" {
         name = "Withdrawn"
     }
 }
+
+action "index_protocol_config" "svm::deploy_subgraph" {
+    program_id = action.deploy_solignition.program_id
+    program_idl = action.deploy_solignition.program_idl
+    slot = action.deploy_solignition.slot
+    pda {
+        type = "ProtocolConfig"
+        instruction {
+            name="initialize"
+            account_name="protocol_config"
+        }
+    }
+}
+
+#action "index_loans" "svm::deploy_subgraph" {
+#    program_id = action.deploy_solignition.program_id
+#    program_idl = action.deploy_solignition.program_idl
+#    slot = action.deploy_solignition.slot
+ #   pda {
+  #      type = "Loan"
+   #     instruction {
+    #        name="request_loan"
+     #       account_name="loan"
+      #  }
+    #}
+#}
