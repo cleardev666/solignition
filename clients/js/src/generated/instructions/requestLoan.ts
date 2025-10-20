@@ -166,7 +166,7 @@ export type RequestLoanAsyncInput<
 > = {
   borrower: TransactionSigner<TAccountBorrower>;
   loan: Address<TAccountLoan>;
-  protocolConfig: Address<TAccountProtocolConfig>;
+  protocolConfig?: Address<TAccountProtocolConfig>;
   vault?: Address<TAccountVault>;
   authorityPda?: Address<TAccountAuthorityPda>;
   adminPda?: Address<TAccountAdminPda>;
@@ -246,6 +246,14 @@ export async function getRequestLoanInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.protocolConfig.value) {
+    accounts.protocolConfig.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
+      ],
+    });
+  }
   if (!accounts.vault.value) {
     accounts.vault.value = await getProgramDerivedAddress({
       programAddress,

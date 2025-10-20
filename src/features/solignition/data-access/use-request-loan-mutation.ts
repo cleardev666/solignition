@@ -8,6 +8,7 @@ import { toastTx } from '@/components/toast-tx'
 import { useSolana } from '@/components/solana/use-solana'
 import { useProtocolConfig } from './use-protocol-config'
 import { toast } from 'sonner'
+import {  PublicKey } from "@solana/web3.js";
 
 const DEPLOYER_API_URL = import.meta.env.VITE_DEPLOYER_API_URL || 'http://localhost:3000'
 
@@ -96,7 +97,7 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
 
         const [loanPda] = await getProgramDerivedAddress({
         programAddress: SOLIGNITION_PROGRAM_ADDRESS,
-        seeds: [new TextEncoder().encode('loan'),(new anchor.BN(loanId)).toArrayLike(Buffer, "le", 8)],
+        seeds: [new TextEncoder().encode('loan'),(new anchor.BN(loanId)).toArrayLike(Buffer, "le", 8), new PublicKey(signer.address).toBuffer() ],
       });
       
 

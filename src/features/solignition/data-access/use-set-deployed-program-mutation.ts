@@ -6,6 +6,7 @@ import { getProgramDerivedAddress } from '@solana/kit'
 import { toastTx } from '@/components/toast-tx'
 import { useSolana } from '@/components/solana/use-solana'
 import type { Address } from '@solana/kit'
+import {  PublicKey } from "@solana/web3.js";
 
 export function useSetDeployedProgramMutation({ account }: { account: UiWalletAccount }) {
   const { cluster } = useSolana()
@@ -24,7 +25,7 @@ export function useSetDeployedProgramMutation({ account }: { account: UiWalletAc
       // Derive loan PDA
       const [loanAddress] = await getProgramDerivedAddress({
         programAddress: SOLIGNITION_PROGRAM_ADDRESS,
-        seeds: [new TextEncoder().encode('loan'), new Uint8Array(new BigUint64Array([loanId]).buffer)],
+        seeds: [new TextEncoder().encode('loan'), new Uint8Array(new BigUint64Array([loanId]).buffer), new PublicKey(signer.address).toBuffer()],
       })
 
       const instruction = getSetDeployedProgramInstruction({

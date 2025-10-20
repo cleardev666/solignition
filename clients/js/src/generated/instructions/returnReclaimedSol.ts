@@ -137,7 +137,7 @@ export type ReturnReclaimedSolAsyncInput<
   TAccountProgram extends string = string,
 > = {
   caller: TransactionSigner<TAccountCaller>;
-  protocolConfig: Address<TAccountProtocolConfig>;
+  protocolConfig?: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
   vault?: Address<TAccountVault>;
   deployerPda: Address<TAccountDeployerPda>;
@@ -205,6 +205,14 @@ export async function getReturnReclaimedSolInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.protocolConfig.value) {
+    accounts.protocolConfig.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
+      ],
+    });
+  }
   if (!accounts.vault.value) {
     accounts.vault.value = await getProgramDerivedAddress({
       programAddress,

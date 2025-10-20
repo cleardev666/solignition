@@ -29,6 +29,8 @@ import {
   getU16Encoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   transformEncoder,
   type Account,
   type Address,
@@ -77,6 +79,7 @@ export type Loan = {
   interestPaid: Option<bigint>;
   reclaimedAmount: Option<bigint>;
   reclaimedTs: Option<bigint>;
+  bump: number;
 };
 
 export type LoanArgs = {
@@ -96,6 +99,7 @@ export type LoanArgs = {
   interestPaid: OptionOrNullable<number | bigint>;
   reclaimedAmount: OptionOrNullable<number | bigint>;
   reclaimedTs: OptionOrNullable<number | bigint>;
+  bump: number;
 };
 
 export function getLoanEncoder(): Encoder<LoanArgs> {
@@ -118,6 +122,7 @@ export function getLoanEncoder(): Encoder<LoanArgs> {
       ['interestPaid', getOptionEncoder(getU64Encoder())],
       ['reclaimedAmount', getOptionEncoder(getU64Encoder())],
       ['reclaimedTs', getOptionEncoder(getI64Encoder())],
+      ['bump', getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: LOAN_DISCRIMINATOR })
   );
@@ -142,6 +147,7 @@ export function getLoanDecoder(): Decoder<Loan> {
     ['interestPaid', getOptionDecoder(getU64Decoder())],
     ['reclaimedAmount', getOptionDecoder(getU64Decoder())],
     ['reclaimedTs', getOptionDecoder(getI64Decoder())],
+    ['bump', getU8Decoder()],
   ]);
 }
 

@@ -25,6 +25,8 @@ import {
   getStructEncoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   transformEncoder,
   type Account,
   type Address,
@@ -55,6 +57,7 @@ export type DepositorRecord = {
   depositedAmount: bigint;
   shareAmount: bigint;
   lastUpdateTs: bigint;
+  bump: number;
 };
 
 export type DepositorRecordArgs = {
@@ -62,6 +65,7 @@ export type DepositorRecordArgs = {
   depositedAmount: number | bigint;
   shareAmount: number | bigint;
   lastUpdateTs: number | bigint;
+  bump: number;
 };
 
 export function getDepositorRecordEncoder(): FixedSizeEncoder<DepositorRecordArgs> {
@@ -72,6 +76,7 @@ export function getDepositorRecordEncoder(): FixedSizeEncoder<DepositorRecordArg
       ['depositedAmount', getU64Encoder()],
       ['shareAmount', getU64Encoder()],
       ['lastUpdateTs', getI64Encoder()],
+      ['bump', getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: DEPOSITOR_RECORD_DISCRIMINATOR })
   );
@@ -84,6 +89,7 @@ export function getDepositorRecordDecoder(): FixedSizeDecoder<DepositorRecord> {
     ['depositedAmount', getU64Decoder()],
     ['shareAmount', getU64Decoder()],
     ['lastUpdateTs', getI64Decoder()],
+    ['bump', getU8Decoder()],
   ]);
 }
 
@@ -158,5 +164,5 @@ export async function fetchAllMaybeDepositorRecord(
 }
 
 export function getDepositorRecordSize(): number {
-  return 64;
+  return 65;
 }

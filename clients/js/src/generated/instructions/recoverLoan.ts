@@ -128,7 +128,7 @@ export type RecoverLoanAsyncInput<
   TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
-  protocolConfig: Address<TAccountProtocolConfig>;
+  protocolConfig?: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
   adminPda?: Address<TAccountAdminPda>;
   treasury: Address<TAccountTreasury>;
@@ -192,6 +192,14 @@ export async function getRecoverLoanInstructionAsync<
   >;
 
   // Resolve default values.
+  if (!accounts.protocolConfig.value) {
+    accounts.protocolConfig.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
+      ],
+    });
+  }
   if (!accounts.adminPda.value) {
     accounts.adminPda.value = await getProgramDerivedAddress({
       programAddress,

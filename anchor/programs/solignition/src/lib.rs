@@ -53,6 +53,7 @@ pub mod solignition {
         config.admin = ctx.accounts.admin.key();
         config.treasury = ctx.accounts.treasury.key();
         config.deployer = ctx.accounts.deployer.key();
+        config.bump = ctx.bumps.protocol_config;
         config.admin_fee_split_bps = admin_fee_split_bps;
         config.default_interest_rate_bps = default_interest_rate_bps;
         config.default_admin_fee_bps = default_admin_fee_bps;
@@ -95,6 +96,7 @@ pub mod solignition {
         depositor_record.deposited_amount += amount;
         depositor_record.share_amount += amount; // 1:1 initially, can be adjusted for yield
         depositor_record.last_update_ts = Clock::get()?.unix_timestamp;
+        depositor_record.bump = ctx.bumps.depositor_record;
 
         // Update protocol totals
         ctx.accounts.protocol_config.total_deposits += amount;
@@ -261,6 +263,7 @@ pub mod solignition {
         loan.interest_paid = Some(0);
         loan.reclaimed_amount = Some(0);
         loan.reclaimed_ts = Some(0);
+        loan.bump = ctx.bumps.loan;
 
         // Update protocol state
         ctx.accounts.protocol_config.total_loans_outstanding += principal;
@@ -416,9 +419,24 @@ pub mod solignition {
             let admin_seeds = &[ADMIN_SEED, &[ctx.bumps.admin_pda]];
             let signer = &[&admin_seeds[..]];
             
-            **ctx.accounts.admin_pda.try_borrow_mut_lamports()? -= treasury_share;
-            **ctx.accounts.treasury.try_borrow_mut_lamports()? += treasury_share;
-        }
+          //  **ctx.accounts.admin_pda.try_borrow_mut_lamports()? -= treasury_share;
+          //  **ctx.accounts.treasury.try_borrow_mut_lamports()? += treasury_share;
+
+            let ix = system_instruction::transfer(
+            &ctx.accounts.admin_pda.key(),
+            &ctx.accounts.treasury.key(),
+            treasury_share,
+            );
+            invoke_signed(
+                        &ix,
+                &[
+                ctx.accounts.admin_pda.to_account_info(),
+                ctx.accounts.treasury.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                 ],
+                 signer,
+            )?;
+           }
         
         // Distribute depositor share as yield
         if depositor_share > 0 {
@@ -650,7 +668,11 @@ pub struct Deposit<'info> {
     )]
     pub depositor_record: Account<'info, DepositorRecord>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [PROTOCOL_CONFIG_SEED],
+        bump = protocol_config.bump
+    )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
     /// CHECK: Vault PDA
@@ -673,12 +695,16 @@ pub struct Withdraw<'info> {
     #[account(
         mut,
         seeds = [DEPOSITOR_SEED, depositor.key().as_ref()],
-        bump,
+        bump = depositor_record.bump,
         constraint = depositor_record.owner == depositor.key() @ ErrorCode::UnauthorizedDepositor
     )]
     pub depositor_record: Account<'info, DepositorRecord>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [PROTOCOL_CONFIG_SEED],
+        bump = protocol_config.bump
+    )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
     /// CHECK: Vault PDA
@@ -703,12 +729,16 @@ pub struct RequestLoan<'info> {
         init,
         payer = borrower,
         space = 8 + Loan::SIZE,
-        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref()],
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &borrower.key().to_bytes()],
         bump
     )]
     pub loan: Account<'info, Loan>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [PROTOCOL_CONFIG_SEED],
+        bump = protocol_config.bump
+    )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
     /// CHECK: Vault PDA
@@ -743,16 +773,23 @@ pub struct RequestLoan<'info> {
 
 #[event_cpi]
 #[derive(Accounts)]
+#[instruction(loan_id: u64)]
 pub struct SetDeployedProgram<'info> {
     pub admin: Signer<'info>,
     
     #[account(
         mut,
-        has_one = admin @ ErrorCode::Unauthorized
+        seeds = [PROTOCOL_CONFIG_SEED],
+        has_one = admin @ ErrorCode::Unauthorized,
+        bump = protocol_config.bump
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [LOAN_SEED, loan_id.to_le_bytes().as_ref(), &loan.borrower.to_bytes()],
+        bump = loan.bump
+    )]
     pub loan: Account<'info, Loan>,
 }
 
@@ -764,11 +801,17 @@ pub struct RepayLoan<'info> {
     
     #[account(
         mut,
-        has_one = borrower @ ErrorCode::UnauthorizedBorrower
+        has_one = borrower @ ErrorCode::UnauthorizedBorrower,
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &borrower.key().to_bytes()],
+        bump = loan.bump
     )]
     pub loan: Account<'info, Loan>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [PROTOCOL_CONFIG_SEED],
+        bump = protocol_config.bump
+    )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
     /// CHECK: Vault PDA
@@ -799,11 +842,17 @@ pub struct RecoverLoan<'info> {
     
     #[account(
         mut,
-        has_one = admin @ ErrorCode::Unauthorized
+        seeds = [PROTOCOL_CONFIG_SEED],
+        has_one = admin @ ErrorCode::Unauthorized,
+        bump = protocol_config.bump
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(),&loan.borrower.to_bytes()],
+        bump = loan.bump
+    )]
     pub loan: Account<'info, Loan>,
     
     /// CHECK: Admin fee PDA
@@ -827,12 +876,16 @@ pub struct ReclaimProgramAuthority<'info> {
     pub admin: Signer<'info>,
     
     #[account(
-        has_one = admin @ ErrorCode::Unauthorized
+        seeds = [PROTOCOL_CONFIG_SEED],
+        has_one = admin @ ErrorCode::Unauthorized,
+        bump = protocol_config.bump
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
     #[account(
-        constraint = loan.state == LoanState::Recovered @ ErrorCode::LoanNotRecovered
+        constraint = loan.state == LoanState::Recovered @ ErrorCode::LoanNotRecovered,
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &loan.borrower.to_bytes()],
+        bump = loan.bump
     )]
     pub loan: Account<'info, Loan>,
     
@@ -850,11 +903,17 @@ pub struct ReturnReclaimedSol<'info> {
     pub caller: Signer<'info>,
     
     #[account(
+        seeds = [PROTOCOL_CONFIG_SEED],
+        bump = protocol_config.bump,
         constraint = caller.key() == protocol_config.admin || caller.key() == protocol_config.deployer @ ErrorCode::Unauthorized
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &loan.borrower.to_bytes()],
+        bump = loan.bump
+    )]
     pub loan: Account<'info, Loan>,
     
     /// CHECK: Vault PDA
@@ -879,7 +938,9 @@ pub struct AdminAction<'info> {
     
     #[account(
         mut,
-        has_one = admin @ ErrorCode::Unauthorized
+        seeds = [PROTOCOL_CONFIG_SEED],
+        has_one = admin @ ErrorCode::Unauthorized,
+        bump = protocol_config.bump
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
 }
@@ -899,6 +960,7 @@ pub struct ProtocolConfig {
     pub total_yield_distributed: u64,
     pub loan_counter: u64,
     pub is_paused: bool,
+    pub bump: u8,
 }
 
 impl ProtocolConfig {
@@ -911,6 +973,7 @@ pub struct DepositorRecord {
     pub deposited_amount: u64,
     pub share_amount: u64,      // Can differ from deposited due to yield
     pub last_update_ts: i64,
+    pub bump: u8,
 }
 
 impl DepositorRecord {
@@ -935,10 +998,22 @@ pub struct Loan {
     pub interest_paid: Option<u64>,
     pub reclaimed_amount: Option<u64>,
     pub reclaimed_ts: Option<i64>,
+    pub bump: u8,
 }
 
 impl Loan {
     pub const SIZE: usize = 8 + 32 + 32 + 8 + 8 + 2 + 2 + 8 + 8 + 1 + 32 + 9 + 9 + 9 + 9 + 9 + 8;
+}
+
+#[account]
+pub struct BorrowerLoanRecord{
+    pub borrower: Pubkey,
+    pub loan_id: u64,
+    pub requested_lamports: u64,
+    pub repayed: bool,
+    pub expire_ts: i64,
+    pub deployed_program: Pubkey,
+    pub bump: u8,
 }
 
 #[derive(Debug)]
@@ -1237,6 +1312,7 @@ mod tests {
             total_yield_distributed: 0,
             loan_counter: 0,
             is_paused: false,
+            bump: 0,
         };
 
         let initial_yield = config.total_yield_distributed;
@@ -1260,6 +1336,7 @@ mod tests {
             total_yield_distributed: 0,
             loan_counter: 0,
             is_paused: false,
+            bump: 0,
         };
 
         let initial_yield = config.total_yield_distributed;
@@ -1283,6 +1360,7 @@ mod tests {
             total_yield_distributed: 0,
             loan_counter: 1,
             is_paused: false,
+            bump: 0,
         };
 
         let yield_amount = 500_000_000; // 0.5 SOL
@@ -1305,6 +1383,7 @@ mod tests {
             total_yield_distributed: 0,
             loan_counter: 2,
             is_paused: false,
+            bump: 0,
         };
 
         // First distribution
@@ -1334,6 +1413,7 @@ mod tests {
             total_yield_distributed: 0,
             loan_counter: 5,
             is_paused: false,
+            bump: 0,
         };
 
         let yield_amount = 10_000_000_000; // 10 SOL
@@ -1356,6 +1436,7 @@ mod tests {
             total_yield_distributed: 0,
             loan_counter: 0,
             is_paused: false,
+            bump: 0,
         };
 
         let yield_amount = 10_000_000_000; // 10 SOL (yield exceeds deposits)

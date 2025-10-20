@@ -128,7 +128,7 @@ export type SetDeployedProgramAsyncInput<
   TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
-  protocolConfig: Address<TAccountProtocolConfig>;
+  protocolConfig?: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
   eventAuthority?: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -182,6 +182,14 @@ export async function getSetDeployedProgramInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.protocolConfig.value) {
+    accounts.protocolConfig.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
+      ],
+    });
+  }
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
       programAddress,

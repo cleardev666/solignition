@@ -27,6 +27,8 @@ import {
   getU16Encoder,
   getU64Decoder,
   getU64Encoder,
+  getU8Decoder,
+  getU8Encoder,
   transformEncoder,
   type Account,
   type Address,
@@ -64,6 +66,7 @@ export type ProtocolConfig = {
   totalYieldDistributed: bigint;
   loanCounter: bigint;
   isPaused: boolean;
+  bump: number;
 };
 
 export type ProtocolConfigArgs = {
@@ -78,6 +81,7 @@ export type ProtocolConfigArgs = {
   totalYieldDistributed: number | bigint;
   loanCounter: number | bigint;
   isPaused: boolean;
+  bump: number;
 };
 
 export function getProtocolConfigEncoder(): FixedSizeEncoder<ProtocolConfigArgs> {
@@ -95,6 +99,7 @@ export function getProtocolConfigEncoder(): FixedSizeEncoder<ProtocolConfigArgs>
       ['totalYieldDistributed', getU64Encoder()],
       ['loanCounter', getU64Encoder()],
       ['isPaused', getBooleanEncoder()],
+      ['bump', getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: PROTOCOL_CONFIG_DISCRIMINATOR })
   );
@@ -114,6 +119,7 @@ export function getProtocolConfigDecoder(): FixedSizeDecoder<ProtocolConfig> {
     ['totalYieldDistributed', getU64Decoder()],
     ['loanCounter', getU64Decoder()],
     ['isPaused', getBooleanDecoder()],
+    ['bump', getU8Decoder()],
   ]);
 }
 
@@ -186,5 +192,5 @@ export async function fetchAllMaybeProtocolConfig(
 }
 
 export function getProtocolConfigSize(): number {
-  return 143;
+  return 144;
 }

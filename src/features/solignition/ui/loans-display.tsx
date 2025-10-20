@@ -75,6 +75,7 @@ export function LoansDisplay({ account }: { account: UiWalletAccount }) {
 
       <div className="grid gap-4">
         {loansQuery.data.map((loan) => {
+          console.log("loan data: ", loan)
           const totalOwed = calculateTotalOwed(loan.data.principal, loan.data.interestRateBps)
           const isActive = loan.data.state === LoanState.Active
 

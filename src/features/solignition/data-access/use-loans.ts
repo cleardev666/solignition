@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSolana } from '@/components/solana/use-solana'
 import { SOLIGNITION_PROGRAM_ADDRESS, decodeLoan, LOAN_DISCRIMINATOR } from '@project/anchor'
+import { getBase58Encoder } from '@solana/kit'
 import type { Address } from '@solana/kit'
 import type { Loan } from '@project/anchor'
 
@@ -15,6 +16,10 @@ export function useLoans() {
   return useQuery({
     queryKey: ['loans', { cluster: cluster.id }],
     queryFn: async () => {
+      // Encode discriminator as base58 for the filter
+      const base58Encoder = getBase58Encoder()
+      const discriminatorBase58 = base58Encoder.encode(LOAN_DISCRIMINATOR)
+
       const accounts = await client.rpc.getProgramAccounts(
         SOLIGNITION_PROGRAM_ADDRESS,
         {
@@ -23,22 +28,35 @@ export function useLoans() {
             {
               memcmp: {
                 offset: 0,
-                bytes: LOAN_DISCRIMINATOR,
-                encoding: 'base58',
+                bytes: discriminatorBase58,
               },
             },
           ],
         }
       ).send()
 
-      return accounts.map(({ account, pubkey }) => ({
-        address: pubkey,
-        data: decodeLoan({
+      console.log(`Found ${accounts.length} loan accounts`)
+
+      return accounts.map(({ account, pubkey }) => {
+        const decoded = decodeLoan({
           address: pubkey,
           data: account.data,
-        }).data,
-      })) as LoanAccount[]
+        })
+        
+        console.log('Loan:', {
+          address: pubkey,
+          loanId: decoded.data.loanId.toString(),
+          borrower: decoded.data.borrower,
+          state: decoded.data.state,
+        })
+
+        return {
+          address: pubkey,
+          data: decoded.data,
+        }
+      }) as LoanAccount[]
     },
+    refetchInterval: 10000, // Refetch every 10 seconds
   })
 }
 

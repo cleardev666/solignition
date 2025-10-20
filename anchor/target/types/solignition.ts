@@ -77,7 +77,22 @@ export type Solignition = {
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -336,11 +351,49 @@ export type Solignition = {
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "loan",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  97,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol_config.loan_counter",
+                "account": "protocolConfig"
+              },
+              {
+                "kind": "account",
+                "path": "loan.borrower",
+                "account": "loan"
+              }
+            ]
+          }
         },
         {
           "name": "adminPda",
@@ -429,11 +482,48 @@ export type Solignition = {
         },
         {
           "name": "loan",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  97,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol_config.loan_counter",
+                "account": "protocolConfig"
+              },
+              {
+                "kind": "account",
+                "path": "borrower"
+              }
+            ]
+          }
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -555,13 +645,32 @@ export type Solignition = {
                 "kind": "account",
                 "path": "protocol_config.loan_counter",
                 "account": "protocolConfig"
+              },
+              {
+                "kind": "account",
+                "path": "borrower"
               }
             ]
           }
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -701,11 +810,49 @@ export type Solignition = {
           "signer": true
         },
         {
-          "name": "protocolConfig"
+          "name": "protocolConfig",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "loan",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  97,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol_config.loan_counter",
+                "account": "protocolConfig"
+              },
+              {
+                "kind": "account",
+                "path": "loan.borrower",
+                "account": "loan"
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -798,11 +945,48 @@ export type Solignition = {
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "loan",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  97,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "loanId"
+              },
+              {
+                "kind": "account",
+                "path": "loan.borrower",
+                "account": "loan"
+              }
+            ]
+          }
         },
         {
           "name": "eventAuthority",
@@ -873,7 +1057,22 @@ export type Solignition = {
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "eventAuthority",
@@ -940,7 +1139,22 @@ export type Solignition = {
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "eventAuthority",
@@ -1057,7 +1271,22 @@ export type Solignition = {
         },
         {
           "name": "protocolConfig",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "vault",
@@ -1505,6 +1734,10 @@ export type Solignition = {
           {
             "name": "lastUpdateTs",
             "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -1591,6 +1824,10 @@ export type Solignition = {
             "type": {
               "option": "i64"
             }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -1755,6 +1992,10 @@ export type Solignition = {
           {
             "name": "isPaused",
             "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

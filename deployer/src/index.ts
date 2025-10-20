@@ -855,6 +855,7 @@ class DeployerOrchestrator {
     let attempts = 0;
 
     while (attempts < config.maxRetries) {
+     if(deployment.status != 'deployed'){
       try {
         await this.processDeployment(deployment);
         return;
@@ -877,6 +878,7 @@ class DeployerOrchestrator {
           setTimeout(resolve, config.retryDelayMs * Math.pow(2, attempts - 1))
         );
       }
+     }
     }
   }
 
@@ -917,7 +919,7 @@ class DeployerOrchestrator {
   }
 
   private async processDeployment(deployment: DeploymentRecord): Promise<void> {
-    const { loanId, binaryPath } = deployment;
+    const { loanId, binaryPath ,borrower } = deployment;
 
     if (!binaryPath) {
       throw new Error('No binary path specified for deployment');
@@ -932,11 +934,7 @@ class DeployerOrchestrator {
 
     deployment.programId = programId;
     deployment.deployTxSignature = signature;
-
-    // Update the on-chain loan with deployed program
-    const setTx = await this.setDeployedProgram(loanId, new PublicKey(programId));
-    deployment.setDeployedTxSignature = setTx;
-
+    
     deployment.status = 'deployed';
     deployment.updatedAt = Date.now();
     await this.stateManager.saveDeployment(deployment);
@@ -945,9 +943,20 @@ class DeployerOrchestrator {
       loanId,
       programId,
     });
+// Update the on-chain loan with deployed program
+    logger.info('trying to set deployed program in contract', {loanId, programId, borrower });
+
+    let setTx = null;
+    try {
+      setTx = await this.setDeployedProgram(loanId, new PublicKey(programId), new PublicKey(borrower));
+      
+    } catch (error) {
+      logger.info('failed to set deployed program in contract', {loanId, programId, borrower });
+    }
+  
   }
 
-  private async setDeployedProgram(loanId: string, programPubkey: PublicKey): Promise<string> {
+  private async setDeployedProgram(loanId: string, programPubkey: PublicKey, borrower: PublicKey): Promise<string> {
     try {
       const loanIdBn = new anchor.BN(loanId);
       const [configPda] = PublicKey.findProgramAddressSync(
@@ -955,7 +964,7 @@ class DeployerOrchestrator {
         this.program.programId
       );
       const [loanPda] = PublicKey.findProgramAddressSync(
-        [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8)],
+        [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8), borrower.toBuffer()],
         this.program.programId
       );
 
@@ -1168,7 +1177,7 @@ class ApiServer {
           });
         }
 
-        // Check if this loan is already being processed
+        /* Check if this loan is already being processed
         if (loanId) {
           const existingDeployment = await this.stateManager.getDeployment(loanId);
           if (existingDeployment && existingDeployment.status !== 'failed') {
@@ -1180,7 +1189,7 @@ class ApiServer {
               loanId,
             });
           }
-        }
+        }*/
 
         // Respond immediately - we'll process in background
         res.json({
@@ -1194,7 +1203,7 @@ class ApiServer {
         // Give the transaction a moment to be confirmed
         setTimeout(async () => {
           try {
-            await this.processLoanFromSignature(signature, borrower, fileUpload);
+            await this.processLoanFromSignature(signature, borrower, fileUpload, loanId);
           } catch (error) {
             logger.error('Error processing loan from signature', { 
               signature, 
@@ -1334,7 +1343,8 @@ class ApiServer {
   private async processLoanFromSignature(
     signature: string,
     borrower: string,
-    fileUpload: FileUploadRecord
+    fileUpload: FileUploadRecord,
+    loanId: string
   ): Promise<void> {
     logger.info('Processing loan from transaction signature', { signature, borrower });
 
@@ -1376,9 +1386,31 @@ class ApiServer {
 
       // Parse the transaction to extract loan details
       const logs = transaction.meta?.logMessages || [];
+
+      // Step 2: Derive the loan PDA
+      const loanIdBn = new anchor.BN(loanId);
+      const [loanPda] = PublicKey.findProgramAddressSync(
+        [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8),new PublicKey(borrower).toBuffer()],
+        config.programId
+      );
       
+      let loanAccount = null;
+
+       try {
+          loanAccount = await connection.getAccountInfo(loanPda, 'confirmed');
+          
+          if (!loanAccount) {
+            //attempts++;
+            logger.info(`Loan account not found yet, attempt ${attempts}/5`, { loanPda: loanPda.toBase58() });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (err) {
+          //attempts++;
+          logger.warn(`Error fetching loan account, attempt ${attempts}/5`, { loanPda: loanPda.toBase58(), err });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       // Look for loan creation in logs or extract from instruction data
-      let loanId: string | null = null;
+      let nloanId: string | null = null;
        
       /* Try to find in logs first
       for (const log of logs) {
@@ -1388,7 +1420,7 @@ class ApiServer {
           logger.info('Found loan ID in logs', { loanId, log });
           break;
         }
-      }*/
+      }
 
       // If not in logs, get it from protocol config account
       if (!loanId) {
@@ -1413,7 +1445,7 @@ class ApiServer {
         // Last resort: use the file upload as a temporary ID
         loanId = `temp_${fileUpload.fileId}`;
         logger.warn('Could not determine loan ID, using temporary ID', { loanId });
-      }
+      }*/
 
       logger.info('Processing deployment for loan', { loanId, signature, borrower });
 

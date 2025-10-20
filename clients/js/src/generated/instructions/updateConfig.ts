@@ -139,7 +139,7 @@ export type UpdateConfigAsyncInput<
   TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
-  protocolConfig: Address<TAccountProtocolConfig>;
+  protocolConfig?: Address<TAccountProtocolConfig>;
   eventAuthority?: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
   adminFeeSplitBps: UpdateConfigInstructionDataArgs['adminFeeSplitBps'];
@@ -191,6 +191,14 @@ export async function getUpdateConfigInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.protocolConfig.value) {
+    accounts.protocolConfig.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
+      ],
+    });
+  }
   if (!accounts.eventAuthority.value) {
     accounts.eventAuthority.value = await getProgramDerivedAddress({
       programAddress,

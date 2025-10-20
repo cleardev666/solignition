@@ -136,7 +136,7 @@ export type DepositAsyncInput<
 > = {
   depositor: TransactionSigner<TAccountDepositor>;
   depositorRecord?: Address<TAccountDepositorRecord>;
-  protocolConfig: Address<TAccountProtocolConfig>;
+  protocolConfig?: Address<TAccountProtocolConfig>;
   vault?: Address<TAccountVault>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority?: Address<TAccountEventAuthority>;
@@ -206,6 +206,14 @@ export async function getDepositInstructionAsync<
           new Uint8Array([100, 101, 112, 111, 115, 105, 116, 111, 114])
         ),
         getAddressEncoder().encode(expectAddress(accounts.depositor.value)),
+      ],
+    });
+  }
+  if (!accounts.protocolConfig.value) {
+    accounts.protocolConfig.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
       ],
     });
   }
