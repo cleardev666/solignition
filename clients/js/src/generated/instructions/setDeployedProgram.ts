@@ -14,6 +14,7 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   getU64Decoder,
@@ -28,6 +29,7 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
+  type ReadonlyAccount,
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
@@ -51,6 +53,8 @@ export type SetDeployedProgramInstruction<
   TAccountAdmin extends string | AccountMeta<string> = string,
   TAccountProtocolConfig extends string | AccountMeta<string> = string,
   TAccountLoan extends string | AccountMeta<string> = string,
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -66,6 +70,12 @@ export type SetDeployedProgramInstruction<
       TAccountLoan extends string
         ? WritableAccount<TAccountLoan>
         : TAccountLoan,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -110,35 +120,47 @@ export function getSetDeployedProgramInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type SetDeployedProgramInput<
+export type SetDeployedProgramAsyncInput<
   TAccountAdmin extends string = string,
   TAccountProtocolConfig extends string = string,
   TAccountLoan extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   loanId: SetDeployedProgramInstructionDataArgs['loanId'];
   programPubkey: SetDeployedProgramInstructionDataArgs['programPubkey'];
 };
 
-export function getSetDeployedProgramInstruction<
+export async function getSetDeployedProgramInstructionAsync<
   TAccountAdmin extends string,
   TAccountProtocolConfig extends string,
   TAccountLoan extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
-  input: SetDeployedProgramInput<
+  input: SetDeployedProgramAsyncInput<
     TAccountAdmin,
     TAccountProtocolConfig,
-    TAccountLoan
+    TAccountLoan,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
-): SetDeployedProgramInstruction<
-  TProgramAddress,
-  TAccountAdmin,
-  TAccountProtocolConfig,
-  TAccountLoan
+): Promise<
+  SetDeployedProgramInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountLoan,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
@@ -148,6 +170,105 @@ export function getSetDeployedProgramInstruction<
     admin: { value: input.admin ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
     loan: { value: input.loan ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ])
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
+  return Object.freeze({
+    accounts: [
+      getAccountMeta(accounts.admin),
+      getAccountMeta(accounts.protocolConfig),
+      getAccountMeta(accounts.loan),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
+    ],
+    data: getSetDeployedProgramInstructionDataEncoder().encode(
+      args as SetDeployedProgramInstructionDataArgs
+    ),
+    programAddress,
+  } as SetDeployedProgramInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountLoan,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type SetDeployedProgramInput<
+  TAccountAdmin extends string = string,
+  TAccountProtocolConfig extends string = string,
+  TAccountLoan extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  admin: TransactionSigner<TAccountAdmin>;
+  protocolConfig: Address<TAccountProtocolConfig>;
+  loan: Address<TAccountLoan>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+  loanId: SetDeployedProgramInstructionDataArgs['loanId'];
+  programPubkey: SetDeployedProgramInstructionDataArgs['programPubkey'];
+};
+
+export function getSetDeployedProgramInstruction<
+  TAccountAdmin extends string,
+  TAccountProtocolConfig extends string,
+  TAccountLoan extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
+>(
+  input: SetDeployedProgramInput<
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountLoan,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress }
+): SetDeployedProgramInstruction<
+  TProgramAddress,
+  TAccountAdmin,
+  TAccountProtocolConfig,
+  TAccountLoan,
+  TAccountEventAuthority,
+  TAccountProgram
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    admin: { value: input.admin ?? null, isWritable: false },
+    protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
+    loan: { value: input.loan ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -163,6 +284,8 @@ export function getSetDeployedProgramInstruction<
       getAccountMeta(accounts.admin),
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.loan),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getSetDeployedProgramInstructionDataEncoder().encode(
       args as SetDeployedProgramInstructionDataArgs
@@ -172,7 +295,9 @@ export function getSetDeployedProgramInstruction<
     TProgramAddress,
     TAccountAdmin,
     TAccountProtocolConfig,
-    TAccountLoan
+    TAccountLoan,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -185,6 +310,8 @@ export type ParsedSetDeployedProgramInstruction<
     admin: TAccountMetas[0];
     protocolConfig: TAccountMetas[1];
     loan: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
   data: SetDeployedProgramInstructionData;
 };
@@ -197,7 +324,7 @@ export function parseSetDeployedProgramInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedSetDeployedProgramInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 5) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -213,6 +340,8 @@ export function parseSetDeployedProgramInstruction<
       admin: getNextAccount(),
       protocolConfig: getNextAccount(),
       loan: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getSetDeployedProgramInstructionDataDecoder().decode(
       instruction.data

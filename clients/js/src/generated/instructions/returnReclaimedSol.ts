@@ -56,6 +56,8 @@ export type ReturnReclaimedSolInstruction<
   TAccountSystemProgram extends
     | string
     | AccountMeta<string> = '11111111111111111111111111111111',
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -80,6 +82,12 @@ export type ReturnReclaimedSolInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -125,6 +133,8 @@ export type ReturnReclaimedSolAsyncInput<
   TAccountVault extends string = string,
   TAccountDeployerPda extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   caller: TransactionSigner<TAccountCaller>;
   protocolConfig: Address<TAccountProtocolConfig>;
@@ -132,6 +142,8 @@ export type ReturnReclaimedSolAsyncInput<
   vault?: Address<TAccountVault>;
   deployerPda: Address<TAccountDeployerPda>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   amount: ReturnReclaimedSolInstructionDataArgs['amount'];
 };
 
@@ -142,6 +154,8 @@ export async function getReturnReclaimedSolInstructionAsync<
   TAccountVault extends string,
   TAccountDeployerPda extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
   input: ReturnReclaimedSolAsyncInput<
@@ -150,7 +164,9 @@ export async function getReturnReclaimedSolInstructionAsync<
     TAccountLoan,
     TAccountVault,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
 ): Promise<
@@ -161,7 +177,9 @@ export async function getReturnReclaimedSolInstructionAsync<
     TAccountLoan,
     TAccountVault,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -175,6 +193,8 @@ export async function getReturnReclaimedSolInstructionAsync<
     vault: { value: input.vault ?? null, isWritable: true },
     deployerPda: { value: input.deployerPda ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -197,6 +217,19 @@ export async function getReturnReclaimedSolInstructionAsync<
     accounts.systemProgram.value =
       '11111111111111111111111111111111' as Address<'11111111111111111111111111111111'>;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ])
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
   return Object.freeze({
@@ -207,6 +240,8 @@ export async function getReturnReclaimedSolInstructionAsync<
       getAccountMeta(accounts.vault),
       getAccountMeta(accounts.deployerPda),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getReturnReclaimedSolInstructionDataEncoder().encode(
       args as ReturnReclaimedSolInstructionDataArgs
@@ -219,7 +254,9 @@ export async function getReturnReclaimedSolInstructionAsync<
     TAccountLoan,
     TAccountVault,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -230,6 +267,8 @@ export type ReturnReclaimedSolInput<
   TAccountVault extends string = string,
   TAccountDeployerPda extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   caller: TransactionSigner<TAccountCaller>;
   protocolConfig: Address<TAccountProtocolConfig>;
@@ -237,6 +276,8 @@ export type ReturnReclaimedSolInput<
   vault: Address<TAccountVault>;
   deployerPda: Address<TAccountDeployerPda>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   amount: ReturnReclaimedSolInstructionDataArgs['amount'];
 };
 
@@ -247,6 +288,8 @@ export function getReturnReclaimedSolInstruction<
   TAccountVault extends string,
   TAccountDeployerPda extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
   input: ReturnReclaimedSolInput<
@@ -255,7 +298,9 @@ export function getReturnReclaimedSolInstruction<
     TAccountLoan,
     TAccountVault,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
 ): ReturnReclaimedSolInstruction<
@@ -265,7 +310,9 @@ export function getReturnReclaimedSolInstruction<
   TAccountLoan,
   TAccountVault,
   TAccountDeployerPda,
-  TAccountSystemProgram
+  TAccountSystemProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
@@ -278,6 +325,8 @@ export function getReturnReclaimedSolInstruction<
     vault: { value: input.vault ?? null, isWritable: true },
     deployerPda: { value: input.deployerPda ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -302,6 +351,8 @@ export function getReturnReclaimedSolInstruction<
       getAccountMeta(accounts.vault),
       getAccountMeta(accounts.deployerPda),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getReturnReclaimedSolInstructionDataEncoder().encode(
       args as ReturnReclaimedSolInstructionDataArgs
@@ -314,7 +365,9 @@ export function getReturnReclaimedSolInstruction<
     TAccountLoan,
     TAccountVault,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -330,6 +383,8 @@ export type ParsedReturnReclaimedSolInstruction<
     vault: TAccountMetas[3];
     deployerPda: TAccountMetas[4];
     systemProgram: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: ReturnReclaimedSolInstructionData;
 };
@@ -342,7 +397,7 @@ export function parseReturnReclaimedSolInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedReturnReclaimedSolInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 8) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -361,6 +416,8 @@ export function parseReturnReclaimedSolInstruction<
       vault: getNextAccount(),
       deployerPda: getNextAccount(),
       systemProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getReturnReclaimedSolInstructionDataDecoder().decode(
       instruction.data

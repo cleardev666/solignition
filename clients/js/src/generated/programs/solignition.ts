@@ -16,7 +16,6 @@ import {
 import {
   type ParsedDepositInstruction,
   type ParsedInitializeInstruction,
-  type ParsedReclaimProgramAuthorityInstruction,
   type ParsedRecoverLoanInstruction,
   type ParsedRepayLoanInstruction,
   type ParsedRequestLoanInstruction,
@@ -81,7 +80,6 @@ export function identifySolignitionAccount(
 export enum SolignitionInstruction {
   Deposit,
   Initialize,
-  ReclaimProgramAuthority,
   RecoverLoan,
   RepayLoan,
   RequestLoan,
@@ -117,17 +115,6 @@ export function identifySolignitionInstruction(
     )
   ) {
     return SolignitionInstruction.Initialize;
-  }
-  if (
-    containsBytes(
-      data,
-      fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([59, 60, 162, 122, 3, 250, 57, 139])
-      ),
-      0
-    )
-  ) {
-    return SolignitionInstruction.ReclaimProgramAuthority;
   }
   if (
     containsBytes(
@@ -231,9 +218,6 @@ export type ParsedSolignitionInstruction<
   | ({
       instructionType: SolignitionInstruction.Initialize;
     } & ParsedInitializeInstruction<TProgram>)
-  | ({
-      instructionType: SolignitionInstruction.ReclaimProgramAuthority;
-    } & ParsedReclaimProgramAuthorityInstruction<TProgram>)
   | ({
       instructionType: SolignitionInstruction.RecoverLoan;
     } & ParsedRecoverLoanInstruction<TProgram>)

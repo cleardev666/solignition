@@ -14,6 +14,7 @@ import {
   getBooleanEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   transformEncoder,
@@ -26,6 +27,7 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
+  type ReadonlyAccount,
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
@@ -46,6 +48,8 @@ export type SetPausedInstruction<
   TProgram extends string = typeof SOLIGNITION_PROGRAM_ADDRESS,
   TAccountAdmin extends string | AccountMeta<string> = string,
   TAccountProtocolConfig extends string | AccountMeta<string> = string,
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -58,6 +62,12 @@ export type SetPausedInstruction<
       TAccountProtocolConfig extends string
         ? WritableAccount<TAccountProtocolConfig>
         : TAccountProtocolConfig,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -96,26 +106,41 @@ export function getSetPausedInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type SetPausedInput<
+export type SetPausedAsyncInput<
   TAccountAdmin extends string = string,
   TAccountProtocolConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig: Address<TAccountProtocolConfig>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   isPaused: SetPausedInstructionDataArgs['isPaused'];
 };
 
-export function getSetPausedInstruction<
+export async function getSetPausedInstructionAsync<
   TAccountAdmin extends string,
   TAccountProtocolConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
-  input: SetPausedInput<TAccountAdmin, TAccountProtocolConfig>,
+  input: SetPausedAsyncInput<
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
   config?: { programAddress?: TProgramAddress }
-): SetPausedInstruction<
-  TProgramAddress,
-  TAccountAdmin,
-  TAccountProtocolConfig
+): Promise<
+  SetPausedInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
@@ -124,6 +149,96 @@ export function getSetPausedInstruction<
   const originalAccounts = {
     admin: { value: input.admin ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ])
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
+  return Object.freeze({
+    accounts: [
+      getAccountMeta(accounts.admin),
+      getAccountMeta(accounts.protocolConfig),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
+    ],
+    data: getSetPausedInstructionDataEncoder().encode(
+      args as SetPausedInstructionDataArgs
+    ),
+    programAddress,
+  } as SetPausedInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type SetPausedInput<
+  TAccountAdmin extends string = string,
+  TAccountProtocolConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  admin: TransactionSigner<TAccountAdmin>;
+  protocolConfig: Address<TAccountProtocolConfig>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+  isPaused: SetPausedInstructionDataArgs['isPaused'];
+};
+
+export function getSetPausedInstruction<
+  TAccountAdmin extends string,
+  TAccountProtocolConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
+>(
+  input: SetPausedInput<
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress }
+): SetPausedInstruction<
+  TProgramAddress,
+  TAccountAdmin,
+  TAccountProtocolConfig,
+  TAccountEventAuthority,
+  TAccountProgram
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    admin: { value: input.admin ?? null, isWritable: false },
+    protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -138,6 +253,8 @@ export function getSetPausedInstruction<
     accounts: [
       getAccountMeta(accounts.admin),
       getAccountMeta(accounts.protocolConfig),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getSetPausedInstructionDataEncoder().encode(
       args as SetPausedInstructionDataArgs
@@ -146,7 +263,9 @@ export function getSetPausedInstruction<
   } as SetPausedInstruction<
     TProgramAddress,
     TAccountAdmin,
-    TAccountProtocolConfig
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -158,6 +277,8 @@ export type ParsedSetPausedInstruction<
   accounts: {
     admin: TAccountMetas[0];
     protocolConfig: TAccountMetas[1];
+    eventAuthority: TAccountMetas[2];
+    program: TAccountMetas[3];
   };
   data: SetPausedInstructionData;
 };
@@ -170,7 +291,7 @@ export function parseSetPausedInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedSetPausedInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 2) {
+  if (instruction.accounts.length < 4) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -182,7 +303,12 @@ export function parseSetPausedInstruction<
   };
   return {
     programAddress: instruction.programAddress,
-    accounts: { admin: getNextAccount(), protocolConfig: getNextAccount() },
+    accounts: {
+      admin: getNextAccount(),
+      protocolConfig: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
+    },
     data: getSetPausedInstructionDataDecoder().decode(instruction.data),
   };
 }

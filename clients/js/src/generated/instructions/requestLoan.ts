@@ -38,11 +38,7 @@ import {
   type WritableSignerAccount,
 } from '@solana/kit';
 import { SOLIGNITION_PROGRAM_ADDRESS } from '../programs';
-import {
-  expectSome,
-  getAccountMetaFactory,
-  type ResolvedAccount,
-} from '../shared';
+import { getAccountMetaFactory, type ResolvedAccount } from '../shared';
 
 export const REQUEST_LOAN_DISCRIMINATOR = new Uint8Array([
   120, 2, 7, 7, 1, 219, 235, 187,
@@ -66,6 +62,8 @@ export type RequestLoanInstruction<
   TAccountSystemProgram extends
     | string
     | AccountMeta<string> = '11111111111111111111111111111111',
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -96,13 +94,18 @@ export type RequestLoanInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
 
 export type RequestLoanInstructionData = {
   discriminator: ReadonlyUint8Array;
-  loanId: bigint;
   principal: bigint;
   duration: bigint;
   interestRateBps: number;
@@ -110,7 +113,6 @@ export type RequestLoanInstructionData = {
 };
 
 export type RequestLoanInstructionDataArgs = {
-  loanId: number | bigint;
   principal: number | bigint;
   duration: number | bigint;
   interestRateBps: number;
@@ -121,7 +123,6 @@ export function getRequestLoanInstructionDataEncoder(): FixedSizeEncoder<Request
   return transformEncoder(
     getStructEncoder([
       ['discriminator', fixEncoderSize(getBytesEncoder(), 8)],
-      ['loanId', getU64Encoder()],
       ['principal', getU64Encoder()],
       ['duration', getI64Encoder()],
       ['interestRateBps', getU16Encoder()],
@@ -134,7 +135,6 @@ export function getRequestLoanInstructionDataEncoder(): FixedSizeEncoder<Request
 export function getRequestLoanInstructionDataDecoder(): FixedSizeDecoder<RequestLoanInstructionData> {
   return getStructDecoder([
     ['discriminator', fixDecoderSize(getBytesDecoder(), 8)],
-    ['loanId', getU64Decoder()],
     ['principal', getU64Decoder()],
     ['duration', getI64Decoder()],
     ['interestRateBps', getU16Decoder()],
@@ -161,16 +161,19 @@ export type RequestLoanAsyncInput<
   TAccountAdminPda extends string = string,
   TAccountDeployerPda extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   borrower: TransactionSigner<TAccountBorrower>;
-  loan?: Address<TAccountLoan>;
+  loan: Address<TAccountLoan>;
   protocolConfig: Address<TAccountProtocolConfig>;
   vault?: Address<TAccountVault>;
   authorityPda?: Address<TAccountAuthorityPda>;
   adminPda?: Address<TAccountAdminPda>;
   deployerPda: Address<TAccountDeployerPda>;
   systemProgram?: Address<TAccountSystemProgram>;
-  loanId: RequestLoanInstructionDataArgs['loanId'];
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   principal: RequestLoanInstructionDataArgs['principal'];
   duration: RequestLoanInstructionDataArgs['duration'];
   interestRateBps: RequestLoanInstructionDataArgs['interestRateBps'];
@@ -186,6 +189,8 @@ export async function getRequestLoanInstructionAsync<
   TAccountAdminPda extends string,
   TAccountDeployerPda extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
   input: RequestLoanAsyncInput<
@@ -196,7 +201,9 @@ export async function getRequestLoanInstructionAsync<
     TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
 ): Promise<
@@ -209,7 +216,9 @@ export async function getRequestLoanInstructionAsync<
     TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -225,6 +234,8 @@ export async function getRequestLoanInstructionAsync<
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     deployerPda: { value: input.deployerPda ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -235,15 +246,6 @@ export async function getRequestLoanInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
-  if (!accounts.loan.value) {
-    accounts.loan.value = await getProgramDerivedAddress({
-      programAddress,
-      seeds: [
-        getBytesEncoder().encode(new Uint8Array([108, 111, 97, 110])),
-        getU64Encoder().encode(expectSome(args.loanId)),
-      ],
-    });
-  }
   if (!accounts.vault.value) {
     accounts.vault.value = await getProgramDerivedAddress({
       programAddress,
@@ -274,6 +276,19 @@ export async function getRequestLoanInstructionAsync<
     accounts.systemProgram.value =
       '11111111111111111111111111111111' as Address<'11111111111111111111111111111111'>;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ])
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
   return Object.freeze({
@@ -286,6 +301,8 @@ export async function getRequestLoanInstructionAsync<
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.deployerPda),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getRequestLoanInstructionDataEncoder().encode(
       args as RequestLoanInstructionDataArgs
@@ -300,7 +317,9 @@ export async function getRequestLoanInstructionAsync<
     TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -313,6 +332,8 @@ export type RequestLoanInput<
   TAccountAdminPda extends string = string,
   TAccountDeployerPda extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   borrower: TransactionSigner<TAccountBorrower>;
   loan: Address<TAccountLoan>;
@@ -322,7 +343,8 @@ export type RequestLoanInput<
   adminPda: Address<TAccountAdminPda>;
   deployerPda: Address<TAccountDeployerPda>;
   systemProgram?: Address<TAccountSystemProgram>;
-  loanId: RequestLoanInstructionDataArgs['loanId'];
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   principal: RequestLoanInstructionDataArgs['principal'];
   duration: RequestLoanInstructionDataArgs['duration'];
   interestRateBps: RequestLoanInstructionDataArgs['interestRateBps'];
@@ -338,6 +360,8 @@ export function getRequestLoanInstruction<
   TAccountAdminPda extends string,
   TAccountDeployerPda extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
   input: RequestLoanInput<
@@ -348,7 +372,9 @@ export function getRequestLoanInstruction<
     TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
 ): RequestLoanInstruction<
@@ -360,7 +386,9 @@ export function getRequestLoanInstruction<
   TAccountAuthorityPda,
   TAccountAdminPda,
   TAccountDeployerPda,
-  TAccountSystemProgram
+  TAccountSystemProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
@@ -375,6 +403,8 @@ export function getRequestLoanInstruction<
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     deployerPda: { value: input.deployerPda ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -401,6 +431,8 @@ export function getRequestLoanInstruction<
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.deployerPda),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getRequestLoanInstructionDataEncoder().encode(
       args as RequestLoanInstructionDataArgs
@@ -415,7 +447,9 @@ export function getRequestLoanInstruction<
     TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployerPda,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -433,6 +467,8 @@ export type ParsedRequestLoanInstruction<
     adminPda: TAccountMetas[5];
     deployerPda: TAccountMetas[6];
     systemProgram: TAccountMetas[7];
+    eventAuthority: TAccountMetas[8];
+    program: TAccountMetas[9];
   };
   data: RequestLoanInstructionData;
 };
@@ -445,7 +481,7 @@ export function parseRequestLoanInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedRequestLoanInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 8) {
+  if (instruction.accounts.length < 10) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -466,6 +502,8 @@ export function parseRequestLoanInstruction<
       adminPda: getNextAccount(),
       deployerPda: getNextAccount(),
       systemProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getRequestLoanInstructionDataDecoder().decode(instruction.data),
   };

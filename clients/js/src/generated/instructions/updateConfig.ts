@@ -16,6 +16,7 @@ import {
   getBytesEncoder,
   getOptionDecoder,
   getOptionEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   getU16Decoder,
@@ -32,6 +33,7 @@ import {
   type InstructionWithData,
   type Option,
   type OptionOrNullable,
+  type ReadonlyAccount,
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
@@ -54,6 +56,8 @@ export type UpdateConfigInstruction<
   TProgram extends string = typeof SOLIGNITION_PROGRAM_ADDRESS,
   TAccountAdmin extends string | AccountMeta<string> = string,
   TAccountProtocolConfig extends string | AccountMeta<string> = string,
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -66,6 +70,12 @@ export type UpdateConfigInstruction<
       TAccountProtocolConfig extends string
         ? WritableAccount<TAccountProtocolConfig>
         : TAccountProtocolConfig,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -122,12 +132,110 @@ export function getUpdateConfigInstructionDataCodec(): Codec<
   );
 }
 
-export type UpdateConfigInput<
+export type UpdateConfigAsyncInput<
   TAccountAdmin extends string = string,
   TAccountProtocolConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig: Address<TAccountProtocolConfig>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+  adminFeeSplitBps: UpdateConfigInstructionDataArgs['adminFeeSplitBps'];
+  defaultInterestRateBps: UpdateConfigInstructionDataArgs['defaultInterestRateBps'];
+  defaultAdminFeeBps: UpdateConfigInstructionDataArgs['defaultAdminFeeBps'];
+  deployer: UpdateConfigInstructionDataArgs['deployer'];
+  treasury: UpdateConfigInstructionDataArgs['treasury'];
+};
+
+export async function getUpdateConfigInstructionAsync<
+  TAccountAdmin extends string,
+  TAccountProtocolConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
+>(
+  input: UpdateConfigAsyncInput<
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress }
+): Promise<
+  UpdateConfigInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    admin: { value: input.admin ?? null, isWritable: false },
+    protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ])
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
+  return Object.freeze({
+    accounts: [
+      getAccountMeta(accounts.admin),
+      getAccountMeta(accounts.protocolConfig),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
+    ],
+    data: getUpdateConfigInstructionDataEncoder().encode(
+      args as UpdateConfigInstructionDataArgs
+    ),
+    programAddress,
+  } as UpdateConfigInstruction<
+    TProgramAddress,
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type UpdateConfigInput<
+  TAccountAdmin extends string = string,
+  TAccountProtocolConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  admin: TransactionSigner<TAccountAdmin>;
+  protocolConfig: Address<TAccountProtocolConfig>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   adminFeeSplitBps: UpdateConfigInstructionDataArgs['adminFeeSplitBps'];
   defaultInterestRateBps: UpdateConfigInstructionDataArgs['defaultInterestRateBps'];
   defaultAdminFeeBps: UpdateConfigInstructionDataArgs['defaultAdminFeeBps'];
@@ -138,14 +246,23 @@ export type UpdateConfigInput<
 export function getUpdateConfigInstruction<
   TAccountAdmin extends string,
   TAccountProtocolConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
-  input: UpdateConfigInput<TAccountAdmin, TAccountProtocolConfig>,
+  input: UpdateConfigInput<
+    TAccountAdmin,
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
   config?: { programAddress?: TProgramAddress }
 ): UpdateConfigInstruction<
   TProgramAddress,
   TAccountAdmin,
-  TAccountProtocolConfig
+  TAccountProtocolConfig,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
@@ -154,6 +271,8 @@ export function getUpdateConfigInstruction<
   const originalAccounts = {
     admin: { value: input.admin ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -168,6 +287,8 @@ export function getUpdateConfigInstruction<
     accounts: [
       getAccountMeta(accounts.admin),
       getAccountMeta(accounts.protocolConfig),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getUpdateConfigInstructionDataEncoder().encode(
       args as UpdateConfigInstructionDataArgs
@@ -176,7 +297,9 @@ export function getUpdateConfigInstruction<
   } as UpdateConfigInstruction<
     TProgramAddress,
     TAccountAdmin,
-    TAccountProtocolConfig
+    TAccountProtocolConfig,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -188,6 +311,8 @@ export type ParsedUpdateConfigInstruction<
   accounts: {
     admin: TAccountMetas[0];
     protocolConfig: TAccountMetas[1];
+    eventAuthority: TAccountMetas[2];
+    program: TAccountMetas[3];
   };
   data: UpdateConfigInstructionData;
 };
@@ -200,7 +325,7 @@ export function parseUpdateConfigInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedUpdateConfigInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 2) {
+  if (instruction.accounts.length < 4) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -212,7 +337,12 @@ export function parseUpdateConfigInstruction<
   };
   return {
     programAddress: instruction.programAddress,
-    accounts: { admin: getNextAccount(), protocolConfig: getNextAccount() },
+    accounts: {
+      admin: getNextAccount(),
+      protocolConfig: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
+    },
     data: getUpdateConfigInstructionDataDecoder().decode(instruction.data),
   };
 }

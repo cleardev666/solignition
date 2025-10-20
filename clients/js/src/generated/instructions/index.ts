@@ -8,7 +8,6 @@
 
 export * from './deposit';
 export * from './initialize';
-export * from './reclaimProgramAuthority';
 export * from './recoverLoan';
 export * from './repayLoan';
 export * from './requestLoan';

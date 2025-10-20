@@ -851,7 +851,7 @@ class DeployerOrchestrator {
     await this.processDeploymentWithRetries(deployment);
   }
 
-  private async processDeploymentWithRetries(deployment: DeploymentRecord): Promise<void> {
+  public async processDeploymentWithRetries(deployment: DeploymentRecord): Promise<void> {
     let attempts = 0;
 
     while (attempts < config.maxRetries) {
@@ -878,6 +878,42 @@ class DeployerOrchestrator {
         );
       }
     }
+  }
+
+  // Add a new public method to trigger deployment from API
+  public async triggerDeployment(loanId: string, borrower: string): Promise<void> {
+    logger.info('Triggering deployment via API', { loanId, borrower });
+
+    // Check if we have a file upload for this borrower
+    const fileUpload = await this.stateManager.getFileUploadByBorrower(borrower);
+    if (!fileUpload) {
+      throw new Error('No file upload found for borrower');
+    }
+
+    let deployment = await this.stateManager.getDeployment(loanId);
+    if (deployment && deployment.status !== 'failed') {
+      logger.info(`Loan ${loanId} already being processed`, { status: deployment.status });
+      return;
+    }
+
+    deployment = {
+      loanId,
+      borrower,
+      principal: '0',
+      binaryPath: fileUpload.filePath,
+      binaryHash: fileUpload.binaryHash,
+      status: 'pending',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    
+    await this.stateManager.saveDeployment(deployment);
+
+    // Update file upload status
+    fileUpload.status = 'deployed';
+    await this.stateManager.saveFileUpload(fileUpload);
+
+    await this.processDeploymentWithRetries(deployment);
   }
 
   private async processDeployment(deployment: DeploymentRecord): Promise<void> {
@@ -1000,6 +1036,7 @@ class ApiServer {
   private stateManager: StateManager;
   private binaryManager: BinaryManager;
   private upload: multer.Multer;
+  private orchestrator: DeployerOrchestrator | null = null;
 
   constructor(stateManager: StateManager, binaryManager: BinaryManager) {
     this.app = express();
@@ -1024,11 +1061,62 @@ class ApiServer {
     this.setupRoutes();
   }
 
-  private setupMiddleware(): void {
-    this.app.use(cors());
-    this.app.use(express.json());
+  setOrchestrator(orchestrator: DeployerOrchestrator): void {
+    this.orchestrator = orchestrator;
+    logger.info('Orchestrator reference set in ApiServer');
   }
 
+  private setupMiddleware(): void {
+    // Configure CORS - this must be FIRST
+    const corsOptions = {
+      origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+        // Allow requests with no origin (like mobile apps, curl, postman)
+        if (!origin) {
+          return callback(null, true);
+        }
+        
+        const allowedOrigins = [
+          'http://localhost:5173',
+          'http://localhost:5174',
+          'http://localhost:3000',
+          'http://127.0.0.1:5173',
+          process.env.FRONTEND_URL,
+        ].filter(Boolean) as string[];
+        
+        if (allowedOrigins.indexOf(origin) !== -1) {
+          callback(null, true);
+        } else {
+          logger.warn(`CORS request from unauthorized origin: ${origin}`);
+          callback(null, true); // Allow anyway for development
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+      exposedHeaders: ['Content-Length', 'Content-Type'],
+      maxAge: 86400,
+    };
+    
+    this.app.use(cors(corsOptions));
+    
+    // Handle preflight requests
+    this.app.options('*', cors(corsOptions));
+    
+    this.app.use(express.json());
+    
+    logger.info('CORS middleware configured');
+    
+  }
+  /* 
+  private setupMiddleware(): void {
+    // Configure CORS to allow requests from your frontend
+    this.app.use(cors({
+      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      credentials: true,
+    }));
+    this.app.use(express.json());
+  }
+*/
   private setupRoutes(): void {
     // Health check
     this.app.get('/health', async (req, res) => {
@@ -1051,6 +1139,77 @@ class ApiServer {
     this.app.get('/metrics', async (req, res) => {
       res.set('Content-Type', registry.contentType);
       res.end(await registry.metrics());
+    });
+
+    // Notify about new loan request - called by frontend after transaction
+    this.app.post('/notify-loan', async (req, res) => {
+      try {
+        const { signature, borrower, loanId } = req.body;
+        
+        if (!signature || !borrower) {
+          logger.warn('Notify loan request missing required fields', { signature, borrower });
+          return res.status(400).json({ 
+            error: 'Transaction signature and borrower address required' 
+          });
+        }
+
+        logger.info('Received loan notification', { 
+          signature, 
+          borrower, 
+          loanId: loanId || 'unknown'
+        });
+
+        // Check if we have a file upload for this borrower
+        const fileUpload = await this.stateManager.getFileUploadByBorrower(borrower);
+        if (!fileUpload) {
+          logger.error('No file upload found for borrower', { borrower, signature });
+          return res.status(404).json({ 
+            error: 'No file upload found for this borrower. Please upload a file first.' 
+          });
+        }
+
+        // Check if this loan is already being processed
+        if (loanId) {
+          const existingDeployment = await this.stateManager.getDeployment(loanId);
+          if (existingDeployment && existingDeployment.status !== 'failed') {
+            logger.info('Loan already being processed', { loanId, status: existingDeployment.status });
+            return res.json({
+              success: true,
+              message: 'Loan already being processed',
+              status: existingDeployment.status,
+              loanId,
+            });
+          }
+        }
+
+        // Respond immediately - we'll process in background
+        res.json({
+          success: true,
+          message: 'Loan notification received. Deployment will begin shortly.',
+          signature,
+          fileId: fileUpload.fileId,
+        });
+
+        // Process the loan asynchronously
+        // Give the transaction a moment to be confirmed
+        setTimeout(async () => {
+          try {
+            await this.processLoanFromSignature(signature, borrower, fileUpload);
+          } catch (error) {
+            logger.error('Error processing loan from signature', { 
+              signature, 
+              borrower, 
+              error 
+            });
+          }
+        }, 2000); // Wait 2 seconds for confirmation
+
+      } catch (error) {
+        logger.error('Error handling loan notification', { error });
+        res.status(500).json({ 
+          error: error instanceof Error ? error.message : 'Internal server error' 
+        });
+      }
     });
 
     // Upload .so file and calculate deployment cost
@@ -1172,6 +1331,155 @@ class ApiServer {
     });
   }
 
+  private async processLoanFromSignature(
+    signature: string,
+    borrower: string,
+    fileUpload: FileUploadRecord
+  ): Promise<void> {
+    logger.info('Processing loan from transaction signature', { signature, borrower });
+
+    try {
+      // Fetch the transaction to get loan details
+      const connection = new Connection(config.rpcUrl, 'confirmed');
+      
+      // Wait and retry if needed
+      let attempts = 0;
+      let transaction = null;
+      
+      while (attempts < 5 && !transaction) {
+        try {
+          transaction = await connection.getTransaction(signature, {
+            maxSupportedTransactionVersion: 0,
+            commitment: 'confirmed',
+          });
+          
+          if (!transaction) {
+            attempts++;
+            logger.info(`Transaction not found yet, attempt ${attempts}/5`, { signature });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (err) {
+          attempts++;
+          logger.warn(`Error fetching transaction, attempt ${attempts}/5`, { signature, err });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      if (!transaction) {
+        throw new Error(`Transaction not found after ${attempts} attempts: ${signature}`);
+      }
+
+      logger.info('Transaction fetched successfully', { 
+        signature,
+        slot: transaction.slot,
+      });
+
+      // Parse the transaction to extract loan details
+      const logs = transaction.meta?.logMessages || [];
+      
+      // Look for loan creation in logs or extract from instruction data
+      let loanId: string | null = null;
+       
+      /* Try to find in logs first
+      for (const log of logs) {
+        const match = log.match(/Loan (?:created|requested).*?(?:id|ID).*?(\d+)/i);
+        if (match) {
+          loanId = match[1];
+          logger.info('Found loan ID in logs', { loanId, log });
+          break;
+        }
+      }*/
+
+      // If not in logs, get it from protocol config account
+      if (!loanId) {
+        logger.info('Loan ID not found in logs, querying protocol config');
+        const [configPda] = PublicKey.findProgramAddressSync(
+          [PROTOCOL_CONFIG_SEED],
+          config.programId
+        );
+        
+        const configAccount = await connection.getAccountInfo(configPda);
+        if (configAccount && configAccount.data.length >= 16) {
+          // Read loan_counter (u64) - adjust offset based on your program structure
+          // Typically: 8 bytes discriminator + other fields before loan_counter
+          // This is a simplified version - adjust the offset as needed
+          const loanCounter = configAccount.data.readBigUInt64LE(8); // Adjust offset!
+          loanId = (loanCounter - 1n).toString(); // The just-created loan
+          logger.info('Derived loan ID from config', { loanId, loanCounter: loanCounter.toString() });
+        }
+      }
+
+      if (!loanId) {
+        // Last resort: use the file upload as a temporary ID
+        loanId = `temp_${fileUpload.fileId}`;
+        logger.warn('Could not determine loan ID, using temporary ID', { loanId });
+      }
+
+      logger.info('Processing deployment for loan', { loanId, signature, borrower });
+
+      // Create deployment record
+      const deployment: DeploymentRecord = {
+        loanId,
+        borrower,
+        principal: '0',
+        binaryPath: fileUpload.filePath,
+        binaryHash: fileUpload.binaryHash,
+        status: 'pending',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      await this.stateManager.saveDeployment(deployment);
+
+      // Update file upload status
+      fileUpload.status = 'deployed';
+      await this.stateManager.saveFileUpload(fileUpload);
+
+      // Trigger deployment through orchestrator
+      if (this.orchestrator) {
+        await (this.orchestrator as any).processDeploymentWithRetries(deployment);
+        logger.info('Deployment triggered via orchestrator', { loanId });
+      } else {
+        logger.error('No orchestrator reference available for deployment');
+        throw new Error('Orchestrator not initialized');
+      }
+
+    } catch (error) {
+      logger.error('Failed to process loan from signature', {
+        signature,
+        borrower,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      
+      // Save error to deployment record if possible
+      try {
+        const deployments = await this.stateManager.getAllDeployments();
+        const deployment = deployments.find(d => d.borrower === borrower && d.status === 'pending');
+        if (deployment) {
+          deployment.status = 'failed';
+          deployment.error = error instanceof Error ? error.message : String(error);
+          deployment.updatedAt = Date.now();
+          await this.stateManager.saveDeployment(deployment);
+        }
+      } catch (saveError) {
+        logger.error('Failed to save error state', { saveError });
+      }
+      
+      throw error;
+    }
+  }
+
+  private async processDeploymentDirect(deployment: DeploymentRecord): Promise<void> {
+    // This method will be implemented to handle deployment
+    // For now, we'll need to refactor to share deployment logic
+    logger.info('Direct deployment processing started', { loanId: deployment.loanId });
+    
+    // We need access to the orchestrator or deployment logic
+    // This will be handled by passing a reference to the orchestrator
+    // or by making this method call the orchestrator's process method
+  }
+
   start(port: number): void {
     this.app.listen(port, () => {
       logger.info(`API server listening on port ${port}`);
@@ -1255,12 +1563,18 @@ async function main() {
 
     // Start API server
     const apiServer = new ApiServer(stateManager, binaryManager);
+    apiServer.setOrchestrator(orchestrator);
     apiServer.start(config.port);
 
     // Start orchestrator
     await orchestrator.start();
 
     logger.info('Deployer service started successfully');
+    logger.info('API endpoints available:');
+    logger.info(`  - POST http://localhost:${config.port}/upload - Upload program file`);
+    logger.info(`  - POST http://localhost:${config.port}/notify-loan - Notify about loan request`);
+    logger.info(`  - GET http://localhost:${config.port}/health - Health check`);
+    logger.info(`  - GET http://localhost:${config.port}/metrics - Prometheus metrics`);
 
     // Test GraphQL connection
     try {

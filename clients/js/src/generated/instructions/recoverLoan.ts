@@ -54,6 +54,8 @@ export type RecoverLoanInstruction<
   TAccountSystemProgram extends
     | string
     | AccountMeta<string> = '11111111111111111111111111111111',
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -78,6 +80,12 @@ export type RecoverLoanInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -116,6 +124,8 @@ export type RecoverLoanAsyncInput<
   TAccountAdminPda extends string = string,
   TAccountTreasury extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig: Address<TAccountProtocolConfig>;
@@ -123,6 +133,8 @@ export type RecoverLoanAsyncInput<
   adminPda?: Address<TAccountAdminPda>;
   treasury: Address<TAccountTreasury>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
 export async function getRecoverLoanInstructionAsync<
@@ -132,6 +144,8 @@ export async function getRecoverLoanInstructionAsync<
   TAccountAdminPda extends string,
   TAccountTreasury extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
   input: RecoverLoanAsyncInput<
@@ -140,7 +154,9 @@ export async function getRecoverLoanInstructionAsync<
     TAccountLoan,
     TAccountAdminPda,
     TAccountTreasury,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
 ): Promise<
@@ -151,7 +167,9 @@ export async function getRecoverLoanInstructionAsync<
     TAccountLoan,
     TAccountAdminPda,
     TAccountTreasury,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -165,6 +183,8 @@ export async function getRecoverLoanInstructionAsync<
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     treasury: { value: input.treasury ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -184,6 +204,19 @@ export async function getRecoverLoanInstructionAsync<
     accounts.systemProgram.value =
       '11111111111111111111111111111111' as Address<'11111111111111111111111111111111'>;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ])
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, 'programId');
   return Object.freeze({
@@ -194,6 +227,8 @@ export async function getRecoverLoanInstructionAsync<
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.treasury),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getRecoverLoanInstructionDataEncoder().encode({}),
     programAddress,
@@ -204,7 +239,9 @@ export async function getRecoverLoanInstructionAsync<
     TAccountLoan,
     TAccountAdminPda,
     TAccountTreasury,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -215,6 +252,8 @@ export type RecoverLoanInput<
   TAccountAdminPda extends string = string,
   TAccountTreasury extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig: Address<TAccountProtocolConfig>;
@@ -222,6 +261,8 @@ export type RecoverLoanInput<
   adminPda: Address<TAccountAdminPda>;
   treasury: Address<TAccountTreasury>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
 export function getRecoverLoanInstruction<
@@ -231,6 +272,8 @@ export function getRecoverLoanInstruction<
   TAccountAdminPda extends string,
   TAccountTreasury extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof SOLIGNITION_PROGRAM_ADDRESS,
 >(
   input: RecoverLoanInput<
@@ -239,7 +282,9 @@ export function getRecoverLoanInstruction<
     TAccountLoan,
     TAccountAdminPda,
     TAccountTreasury,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress }
 ): RecoverLoanInstruction<
@@ -249,7 +294,9 @@ export function getRecoverLoanInstruction<
   TAccountLoan,
   TAccountAdminPda,
   TAccountTreasury,
-  TAccountSystemProgram
+  TAccountSystemProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? SOLIGNITION_PROGRAM_ADDRESS;
@@ -262,6 +309,8 @@ export function getRecoverLoanInstruction<
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     treasury: { value: input.treasury ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -283,6 +332,8 @@ export function getRecoverLoanInstruction<
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.treasury),
       getAccountMeta(accounts.systemProgram),
+      getAccountMeta(accounts.eventAuthority),
+      getAccountMeta(accounts.program),
     ],
     data: getRecoverLoanInstructionDataEncoder().encode({}),
     programAddress,
@@ -293,7 +344,9 @@ export function getRecoverLoanInstruction<
     TAccountLoan,
     TAccountAdminPda,
     TAccountTreasury,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -309,6 +362,8 @@ export type ParsedRecoverLoanInstruction<
     adminPda: TAccountMetas[3];
     treasury: TAccountMetas[4];
     systemProgram: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: RecoverLoanInstructionData;
 };
@@ -321,7 +376,7 @@ export function parseRecoverLoanInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedRecoverLoanInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 8) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -340,6 +395,8 @@ export function parseRecoverLoanInstruction<
       adminPda: getNextAccount(),
       treasury: getNextAccount(),
       systemProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getRecoverLoanInstructionDataDecoder().decode(instruction.data),
   };
