@@ -105,7 +105,7 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
         program: SOLIGNITION_PROGRAM_ADDRESS,
         borrower: signer,
         protocolConfig,
-        deployerPda,
+        deployer: protocolConfigQuery.data.data.deployer,
         loan: loanPda,
         principal: params.principal,
         duration: params.duration,

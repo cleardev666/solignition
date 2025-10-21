@@ -14,5 +14,6 @@ export * from './requestLoan';
 export * from './returnReclaimedSol';
 export * from './setDeployedProgram';
 export * from './setPaused';
+export * from './transferAuthorityToBorrower';
 export * from './updateConfig';
 export * from './withdraw';

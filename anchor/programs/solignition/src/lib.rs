@@ -21,6 +21,7 @@ pub const ADMIN_SEED: &[u8] = b"admin";
 pub const TREASURY_SEED: &[u8] = b"treasury";
 pub const LOAN_SEED: &[u8] = b"loan";
 pub const DEPOSITOR_SEED: &[u8] = b"depositor";
+pub const DEPLOYER_SEED: &[u8] = b"deployer";
 pub const PROTOCOL_CONFIG_SEED: &[u8] = b"config";
 pub const SECONDS_PER_YEAR: u64 = 31_536_000;
 
@@ -36,7 +37,6 @@ pub const SECONDS_PER_YEAR: u64 = 31_536_000;
 /// 1. Call `recover_loan` when loan expires to mark it recovered
 /// 2. Off-chain deployer can close the program account
 /// 3. Call `return_reclaimed_sol` to return recovered SOL to vault
-/// 4. Optionally call `reclaim_program_authority` for audit trail
 
 #[program]
 pub mod solignition {
@@ -61,6 +61,7 @@ pub mod solignition {
         config.total_loans_outstanding = 0;
         config.is_paused = false;
         config.loan_counter = 0;
+        
         
         emit_cpi!(ProtocolInitialized {
             admin: ctx.accounts.admin.key(),
@@ -232,14 +233,14 @@ pub mod solignition {
 
         let ix = system_instruction::transfer(
         &ctx.accounts.vault.key(),
-        &ctx.accounts.deployer_pda.key(),
+        &ctx.accounts.deployer.key(),
         principal,
          );
         invoke_signed(
             &ix,
             &[
                 ctx.accounts.vault.to_account_info(),
-                ctx.accounts.deployer_pda.to_account_info(),
+                ctx.accounts.deployer.to_account_info(),
                 ctx.accounts.system_program.to_account_info(),
             ],
             signer,
@@ -257,7 +258,7 @@ pub mod solignition {
         loan.admin_fee_paid = admin_fee;
         loan.start_ts = Clock::get()?.unix_timestamp;
         loan.state = LoanState::Pending;
-        loan.authority_pda = ctx.accounts.authority_pda.key();
+       // loan.authority_pda = ctx.accounts.authority_pda.key();
         loan.repaid_ts = Some(0);
         loan.recovered_ts = Some(0);
         loan.interest_paid = Some(0);
@@ -302,8 +303,10 @@ pub mod solignition {
         Ok(())
     }
 
-    /// Repay loan and transfer program authority
-    pub fn repay_loan(ctx: Context<RepayLoan>) -> Result<()> {
+
+    /* 
+    /// Repay loan and transfer program authority old version
+    pub fn repay_loan(ctx: Context<RepayLoan>, loan_id: u64) -> Result<()> {
         require!(!ctx.accounts.protocol_config.is_paused, ErrorCode::ProtocolPaused);
         
         let loan = &ctx.accounts.loan;
@@ -339,7 +342,7 @@ pub mod solignition {
 
         // Transfer upgrade authority from protocol PDA to borrower
         if loan.program_pubkey != Pubkey::default() {
-            let authority_seeds = &[AUTHORITY_SEED, &[ctx.bumps.authority_pda]];
+           /*  let authority_seeds = &[AUTHORITY_SEED, &[ctx.bumps.authority_pda]];
             let signer = &[&authority_seeds[..]];
             
             // CPI to BPF upgradeable loader to transfer authority
@@ -357,7 +360,23 @@ pub mod solignition {
                     ctx.accounts.borrower.to_account_info(),
                 ],
                 signer,
-            )?;
+            )?;*/
+            
+        // CPI to BPF upgradeable loader to transfer authority
+        let ix = bpf_loader_upgradeable::set_upgrade_authority(
+            &loan.program_pubkey,
+            &ctx.accounts.deployer.key(),
+            Some(&ctx.accounts.borrower.key()),
+        );
+        
+        invoke(
+            &ix,
+            &[
+                ctx.accounts.program_data.to_account_info(),
+                ctx.accounts.deployer.to_account_info(),
+                ctx.accounts.borrower.to_account_info(),
+            ],
+        )?;
 
             emit_cpi!(AuthorityTransferred {
                 program_pubkey: loan.program_pubkey,
@@ -384,7 +403,106 @@ pub mod solignition {
         });
 
         Ok(())
-    }
+    }*/
+
+
+    pub fn repay_loan(ctx: Context<RepayLoan>, loan_id: u64) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.is_paused, ErrorCode::ProtocolPaused);
+    
+    let loan = &ctx.accounts.loan;
+    require!(loan.state == LoanState::Active, ErrorCode::LoanNotActive);
+    require!(loan.borrower == ctx.accounts.borrower.key(), ErrorCode::UnauthorizedBorrower);
+    require!(loan.loan_id == loan_id, ErrorCode::InvalidLoanId);
+
+    let clock = Clock::get()?;
+    let elapsed = (clock.unix_timestamp - loan.start_ts) as u64;
+    
+    // Calculate interest
+    let interest = calculate_interest(
+        loan.principal,
+        loan.interest_rate_bps,
+        elapsed,
+    );
+    
+    let total_due = loan.principal + interest;
+
+    // Transfer repayment from borrower to vault
+    let ix = system_instruction::transfer(
+        &ctx.accounts.borrower.key(),
+        &ctx.accounts.vault.key(),
+        total_due,
+    );
+    invoke(
+        &ix,
+        &[
+            ctx.accounts.borrower.to_account_info(),
+            ctx.accounts.vault.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+        ],
+    )?;
+
+    // Distribute interest to depositors
+    distribute_yield(&mut ctx.accounts.protocol_config, interest);
+
+    // Update loan state - marked as paid but authority not yet transferred
+    let loan = &mut ctx.accounts.loan;
+    loan.state = LoanState::RepaidPendingTransfer;
+    loan.repaid_ts = Some(clock.unix_timestamp);
+    loan.interest_paid = Some(interest);
+
+    // Update protocol state
+    ctx.accounts.protocol_config.total_loans_outstanding -= loan.principal;
+
+    emit_cpi!(LoanRepaid {
+        loan_id: loan.loan_id,
+        total_repaid: total_due,
+        interest_paid: interest,
+    });
+
+    Ok(())
+}
+//only called by deployer
+pub fn transfer_authority_to_borrower(
+    ctx: Context<TransferAuthorityToBorrower>,
+    loan_id: u64,
+) -> Result<()> {
+    let loan = &ctx.accounts.loan;
+    
+    require!(
+        loan.state == LoanState::RepaidPendingTransfer,
+        ErrorCode::LoanNotRepaid
+    );
+    require!(loan.loan_id == loan_id, ErrorCode::InvalidLoanId);
+    require!(loan.program_pubkey != Pubkey::default(), ErrorCode::InvalidProgram);
+
+    // Transfer upgrade authority from deployer to borrower
+    let ix = bpf_loader_upgradeable::set_upgrade_authority(
+        &loan.program_pubkey,
+        &ctx.accounts.deployer.key(),
+        Some(&loan.borrower),
+    );
+    
+    invoke(
+        &ix,
+        &[
+            ctx.accounts.program_data.to_account_info(),
+            ctx.accounts.deployer.to_account_info(),
+            ctx.accounts.borrower.to_account_info(),
+            ctx.accounts.bpf_upgradeable_loader.to_account_info(),
+        ],
+    )?;
+
+    // Update loan state to fully repaid
+    let loan = &mut ctx.accounts.loan;
+    loan.state = LoanState::Repaid;
+
+    emit_cpi!(AuthorityTransferred {
+        program_pubkey: loan.program_pubkey,
+        new_authority: loan.borrower,
+    });
+
+    Ok(())
+}
 
     /// Recover expired loan
     pub fn recover_loan(ctx: Context<RecoverLoan>) -> Result<()> {
@@ -427,14 +545,13 @@ pub mod solignition {
             &ctx.accounts.treasury.key(),
             treasury_share,
             );
-            invoke_signed(
+            invoke(
                         &ix,
                 &[
                 ctx.accounts.admin_pda.to_account_info(),
                 ctx.accounts.treasury.to_account_info(),
                 ctx.accounts.system_program.to_account_info(),
                  ],
-                 signer,
             )?;
            }
         
@@ -646,8 +763,8 @@ pub struct Initialize<'info> {
         bump
     )]
     pub treasury: AccountInfo<'info>,
-    
-    /// CHECK: Deployer PDA that receives funds for deployment
+
+    /// CHECK: Deployer that receives funds for deployment
     pub deployer: AccountInfo<'info>,
     
     pub system_program: Program<'info, System>,
@@ -764,9 +881,13 @@ pub struct RequestLoan<'info> {
     )]
     pub admin_pda: AccountInfo<'info>,
     
-    /// CHECK: Deployer PDA that receives deployment funds
-    #[account(mut)]
-    pub deployer_pda: AccountInfo<'info>,
+    
+    /// CHECK: Deployer wallet - receives funds for deployment
+    #[account(
+        mut,
+        constraint = deployer.key() == protocol_config.deployer @ ErrorCode::Unauthorized
+    )]
+    pub deployer: AccountInfo<'info>,
     
     pub system_program: Program<'info, System>,
 }
@@ -795,6 +916,7 @@ pub struct SetDeployedProgram<'info> {
 
 #[event_cpi]
 #[derive(Accounts)]
+#[instruction(loan_id: u64)]
 pub struct RepayLoan<'info> {
     #[account(mut)]
     pub borrower: Signer<'info>,
@@ -802,7 +924,7 @@ pub struct RepayLoan<'info> {
     #[account(
         mut,
         has_one = borrower @ ErrorCode::UnauthorizedBorrower,
-        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &borrower.key().to_bytes()],
+        seeds = [LOAN_SEED, loan_id.to_le_bytes().as_ref(), &borrower.key().to_bytes()],
         bump = loan.bump
     )]
     pub loan: Account<'info, Loan>,
@@ -821,16 +943,59 @@ pub struct RepayLoan<'info> {
         bump
     )]
     pub vault: AccountInfo<'info>,
-    
+    /* 
     /// CHECK: Authority PDA that currently controls the program
     #[account(
         seeds = [AUTHORITY_SEED],
         bump
     )]
     pub authority_pda: AccountInfo<'info>,
+    /// CHECK: Deployer wallet that currently controls the program upgrade authority
+    #[account(
+        constraint = deployer.key() == protocol_config.deployer @ ErrorCode::Unauthorized
+    )]
+    pub deployer: Signer<'info>,  // Must sign to transfer authority
     
     /// CHECK: Program data account for the deployed program
+    pub program_data: AccountInfo<'info>,*/
+    
+    pub system_program: Program<'info, System>,
+}
+
+#[event_cpi]
+#[derive(Accounts)]
+#[instruction(loan_id: u64)]
+pub struct TransferAuthorityToBorrower<'info> {
+    /// CHECK: Deployer wallet that currently controls the program upgrade authority
+    #[account(
+        constraint = deployer.key() == protocol_config.deployer @ ErrorCode::Unauthorized
+    )]
+    pub deployer: Signer<'info>,
+    
+    #[account(
+        seeds = [PROTOCOL_CONFIG_SEED],
+        bump = protocol_config.bump
+    )]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+    
+    #[account(
+        mut,
+        seeds = [LOAN_SEED, loan_id.to_le_bytes().as_ref(), &loan.borrower.to_bytes()],
+        bump = loan.bump
+    )]
+    pub loan: Account<'info, Loan>,
+    
+    /// CHECK: Borrower who will receive authority
+    #[account(mut)]
+    pub borrower: AccountInfo<'info>,
+    
+    /// CHECK: Program data account for the deployed program
+    #[account(mut)] 
     pub program_data: AccountInfo<'info>,
+
+    /// CHECK: BPF Upgradeable Loader program
+    #[account(address = bpf_loader_upgradeable::ID)]
+    pub bpf_upgradeable_loader: AccountInfo<'info>,
     
     pub system_program: Program<'info, System>,
 }
@@ -850,10 +1015,16 @@ pub struct RecoverLoan<'info> {
     
     #[account(
         mut,
-        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(),&loan.borrower.to_bytes()],
+        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &loan.borrower.to_bytes()],
         bump = loan.bump
     )]
     pub loan: Account<'info, Loan>,
+
+    /// CHECK: Deployer wallet that currently controls the program
+    #[account(
+        constraint = deployer.key() == protocol_config.deployer @ ErrorCode::Unauthorized
+    )]
+    pub deployer: Signer<'info>,  // Must sign to transfer authority
     
     /// CHECK: Admin fee PDA
     #[account(
@@ -1023,6 +1194,7 @@ pub enum LoanState {
     Repaid,
     Recovered,
     Pending,
+    RepaidPendingTransfer,
 }
 
 // ===== EVENTS =====
@@ -1136,6 +1308,8 @@ pub enum ErrorCode {
     LoanNotExpired,
     #[msg("Loan has not been recovered")]
     LoanNotRecovered,
+    #[msg("Loan has not been repaid")]
+    LoanNotRepaid,
     #[msg("Unauthorized action")]
     Unauthorized,
     #[msg("Invalid parameter")]

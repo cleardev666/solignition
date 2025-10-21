@@ -16,7 +16,7 @@ export function AdminLoansManagement({ account }: { account: UiWalletAccount }) 
   const [selectedLoanId, setSelectedLoanId] = useState<bigint | null>(null)
   const [programAddress, setProgramAddress] = useState('')
 
-  const loansQuery = useLoans()
+  const loansQuery = useLoans(account.address)
   const recoverMutation = useRecoverLoanMutation({ account })
   const setDeployedProgramMutation = useSetDeployedProgramMutation({ account })
 

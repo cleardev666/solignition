@@ -956,6 +956,73 @@ class DeployerOrchestrator {
   
   }
 
+  public async transferDeployedProgramAuth(loanId: string | number, borrower: PublicKey): Promise<string> {
+    try {
+      const loanIdBn = new anchor.BN(loanId.toString());
+
+      logger.info('Starting auth transfer', {
+      loanId,
+      loanIdBn: loanIdBn.toString(),
+      borrower: borrower.toString()
+    });
+
+      const [configPda] = PublicKey.findProgramAddressSync(
+        [PROTOCOL_CONFIG_SEED],
+        this.program.programId
+      );
+      const [loanPda] = PublicKey.findProgramAddressSync(
+        [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8), borrower.toBuffer()],
+        this.program.programId
+      );
+
+      const deployment = await this.stateManager.getDeployment(loanId.toString());
+      if (!deployment) {
+      logger.info(`Loan ${loanId} not in deployed state`, { status: deployment?.status });
+      return;
+      }
+
+      // Fetch the loan account to get the deployed program pubkey
+      //const loanAccount = await this.connection.getAccountInfo(loanPda, 'confirmed');
+      //logger.info(`loan Account: {} `,loanAccount);
+    
+      //if (!loanAccount || loanAccount.programPubkey.equals(PublicKey.default)) {
+        //throw new Error(`No program deployed for loan ${loanId}`);
+      //}
+      const BPF_UPGRADEABLE_LOADER = new PublicKey(
+      "BPFLoaderUpgradeab1e11111111111111111111111"
+      );
+      
+      
+      const [programData] = PublicKey.findProgramAddressSync([new PublicKey(deployment.programId).toBuffer()], BPF_UPGRADEABLE_LOADER);
+
+       logger.info("\n🔑 Authority Transfer Details:");
+       logger.info("Deployed Program:", deployment.programId.toString());
+       logger.info("Program Data:", programData.toString());
+       logger.info("Current Authority (Deployer):", this.deployerWallet.publicKey.toString());
+       logger.info("New Authority (Borrower):", borrower.toString());
+
+      const tx = await this.program.methods
+        .transferAuthorityToBorrower(loanIdBn)
+        .accountsPartial({
+          deployer: this.deployerWallet.publicKey,
+          protocolConfig: configPda,
+          loan: loanPda,
+          borrower,
+          programData,
+          bpfUpgradeableLoader: BPF_UPGRADEABLE_LOADER,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([this.deployerWallet.payer])
+        .rpc();
+
+      logger.info('transfer program auth from deployer ', { loanId, borrower , tx });
+      return tx;
+    } catch (error) {
+      logger.error('Failed to transfer program auth from deployer', { loanId, error });
+      throw error;
+    }
+  }
+
   private async setDeployedProgram(loanId: string, programPubkey: PublicKey, borrower: PublicKey): Promise<string> {
     try {
       const loanIdBn = new anchor.BN(loanId);
@@ -1148,6 +1215,76 @@ class ApiServer {
     this.app.get('/metrics', async (req, res) => {
       res.set('Content-Type', registry.contentType);
       res.end(await registry.metrics());
+    });
+
+    this.app.post('/notify-repaid', async (req, res) => {
+      try {
+        const { signature, borrower, loanId } = req.body;
+        
+        if (!signature || !borrower) {
+          logger.warn('Notify loan request missing required fields', { signature, borrower });
+          return res.status(400).json({ 
+            error: 'Transaction signature and borrower address required' 
+          });
+        }
+
+        logger.info('Received repaid notification', { 
+          signature, 
+          borrower, 
+          loanId: loanId || 'unknown'
+        });
+        /*
+        res.json({
+        success: true,
+        message: 'Auth transfer queued',
+        loanId,
+        }); */
+
+
+        let tx;
+        // Give the transaction a moment to be confirmed
+       setTimeout(async () => {
+          try {
+          //  const connection = new Connection(config.rpcUrl, 'confirmed');
+          if (!this.orchestrator) {
+          logger.error('No orchestrator reference available');
+          return;
+          }
+          
+          // Trigger transfer through orchestrator
+          const borrowerPubkey = new PublicKey(borrower);
+          tx = await (this.orchestrator as any).transferDeployedProgramAuth(loanId, borrowerPubkey);
+           logger.info('Auth transfer completed', { loanId, borrower, tx });
+
+          // Respond after transaction
+          res.json({
+            success: true,
+            message: 'Auth transfer completed',
+            tx,
+            loanId,
+            auth: borrower,
+          });
+
+          } catch (error) {
+            logger.error('Error transferring program auth', { 
+             borrower,
+             loanId,
+             errorMessage: error instanceof Error ? error.message : String(error),
+             errorStack: error instanceof Error ? error.stack : undefined,
+             errorName: error instanceof Error ? error.name : undefined
+            });
+          }
+        }, 2000); // Wait 2 seconds for confirmation
+
+      } catch (error) {
+        logger.error('Error handling repaid notification', { 
+            errorMessage: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined
+         });
+            res.status(500).json({ 
+            error: error instanceof Error ? error.message : 'Internal server error' 
+            });
+      }
     });
 
     // Notify about new loan request - called by frontend after transaction
@@ -1382,6 +1519,7 @@ class ApiServer {
       logger.info('Transaction fetched successfully', { 
         signature,
         slot: transaction.slot,
+        transaction,
       });
 
       // Parse the transaction to extract loan details
@@ -1453,7 +1591,7 @@ class ApiServer {
       const deployment: DeploymentRecord = {
         loanId,
         borrower,
-        principal: '0',
+        principal: loanAccount.principal,
         binaryPath: fileUpload.filePath,
         binaryHash: fileUpload.binaryHash,
         status: 'pending',

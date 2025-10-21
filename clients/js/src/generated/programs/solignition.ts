@@ -22,6 +22,7 @@ import {
   type ParsedReturnReclaimedSolInstruction,
   type ParsedSetDeployedProgramInstruction,
   type ParsedSetPausedInstruction,
+  type ParsedTransferAuthorityToBorrowerInstruction,
   type ParsedUpdateConfigInstruction,
   type ParsedWithdrawInstruction,
 } from '../instructions';
@@ -86,6 +87,7 @@ export enum SolignitionInstruction {
   ReturnReclaimedSol,
   SetDeployedProgram,
   SetPaused,
+  TransferAuthorityToBorrower,
   UpdateConfig,
   Withdraw,
 }
@@ -186,6 +188,17 @@ export function identifySolignitionInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([159, 89, 124, 24, 191, 80, 144, 187])
+      ),
+      0
+    )
+  ) {
+    return SolignitionInstruction.TransferAuthorityToBorrower;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([29, 158, 252, 191, 10, 83, 219, 99])
       ),
       0
@@ -236,6 +249,9 @@ export type ParsedSolignitionInstruction<
   | ({
       instructionType: SolignitionInstruction.SetPaused;
     } & ParsedSetPausedInstruction<TProgram>)
+  | ({
+      instructionType: SolignitionInstruction.TransferAuthorityToBorrower;
+    } & ParsedTransferAuthorityToBorrowerInstruction<TProgram>)
   | ({
       instructionType: SolignitionInstruction.UpdateConfig;
     } & ParsedUpdateConfigInstruction<TProgram>)

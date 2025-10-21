@@ -18,8 +18,7 @@
     "Recovery Flow for Expired Loans:",
     "1. Call `recover_loan` when loan expires to mark it recovered",
     "2. Off-chain deployer can close the program account",
-    "3. Call `return_reclaimed_sol` to return recovered SOL to vault",
-    "4. Optionally call `reclaim_program_authority` for audit trail"
+    "3. Call `return_reclaimed_sol` to return recovered SOL to vault"
   ],
   "instructions": [
     {
@@ -390,6 +389,10 @@
           }
         },
         {
+          "name": "deployer",
+          "signer": true
+        },
+        {
           "name": "admin_pda",
           "writable": true,
           "pda": {
@@ -452,9 +455,6 @@
     },
     {
       "name": "repay_loan",
-      "docs": [
-        "Repay loan and transfer program authority"
-      ],
       "discriminator": [
         224,
         93,
@@ -489,9 +489,8 @@
                 ]
               },
               {
-                "kind": "account",
-                "path": "protocol_config.loan_counter",
-                "account": "ProtocolConfig"
+                "kind": "arg",
+                "path": "loan_id"
               },
               {
                 "kind": "account",
@@ -538,30 +537,6 @@
           }
         },
         {
-          "name": "authority_pda",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "program_data"
-        },
-        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         },
@@ -598,7 +573,12 @@
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "loan_id",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "request_loan",
@@ -724,7 +704,7 @@
           }
         },
         {
-          "name": "deployer_pda",
+          "name": "deployer",
           "writable": true
         },
         {
@@ -1105,6 +1085,123 @@
         {
           "name": "is_paused",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "transfer_authority_to_borrower",
+      "discriminator": [
+        159,
+        89,
+        124,
+        24,
+        191,
+        80,
+        144,
+        187
+      ],
+      "accounts": [
+        {
+          "name": "deployer",
+          "signer": true
+        },
+        {
+          "name": "protocol_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  97,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "loan_id"
+              },
+              {
+                "kind": "account",
+                "path": "loan.borrower",
+                "account": "Loan"
+              }
+            ]
+          }
+        },
+        {
+          "name": "borrower",
+          "writable": true
+        },
+        {
+          "name": "program_data",
+          "writable": true
+        },
+        {
+          "name": "bpf_upgradeable_loader",
+          "address": "BPFLoaderUpgradeab1e11111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "event_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "loan_id",
+          "type": "u64"
         }
       ]
     },
@@ -1602,31 +1699,36 @@
     },
     {
       "code": 6011,
+      "name": "LoanNotRepaid",
+      "msg": "Loan has not been repaid"
+    },
+    {
+      "code": 6012,
       "name": "Unauthorized",
       "msg": "Unauthorized action"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "InvalidParameter",
       "msg": "Invalid parameter"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "UnauthorizedDepositor",
       "msg": "Unauthorized depositor"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "InvalidLoanId",
       "msg": "Invalid loan ID"
     },
     {
-      "code": 6015,
+      "code": 6016,
       "name": "ProgramAlreadySet",
       "msg": "Program already set for this loan"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "InvalidProgram",
       "msg": "Invalid program pubkey"
     }
@@ -1934,6 +2036,9 @@
           },
           {
             "name": "Pending"
+          },
+          {
+            "name": "RepaidPendingTransfer"
           }
         ]
       }

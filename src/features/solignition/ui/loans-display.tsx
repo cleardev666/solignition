@@ -6,10 +6,19 @@ import { AppExplorerLink } from '@/components/app-explorer-link'
 import { useLoansByBorrower } from '../data-access/use-loans'
 import { useRepayLoanMutation } from '../data-access/use-repay-loan-mutation'
 import { LoanState } from '@project/anchor'
+import { address } from '@solana/kit'
 
 export function LoansDisplay({ account }: { account: UiWalletAccount }) {
-  const loansQuery = useLoansByBorrower(account.address)
+  const loansQuery = useLoansByBorrower(address(account.address))
   const repayMutation = useRepayLoanMutation({ account })
+  console.log('LoansDisplay rendering for account:', account.address)
+  console.log('LoansDisplay query state:', {
+    isLoading: loansQuery.isLoading,
+    isError: loansQuery.isError,
+    error: loansQuery.error,
+    dataLength: loansQuery.data?.length,
+    data: loansQuery.data,
+  })
 
   const formatSOL = (lamports: bigint) => {
     return (Number(lamports) / 1_000_000_000).toFixed(4)
@@ -24,9 +33,13 @@ export function LoansDisplay({ account }: { account: UiWalletAccount }) {
       case LoanState.Active:
         return <Badge className="bg-green-500">Active</Badge>
       case LoanState.Repaid:
-        return <Badge className="bg-blue-500">Repaid</Badge>
+        return <Badge className="success">Repaid</Badge>
       case LoanState.Recovered:
-        return <Badge variant="destructive">Recovered</Badge>
+        return <Badge variant="primary">Recovered</Badge>
+      case LoanState.Pending:
+        return <Badge variant="destructive">Pending</Badge>
+      case LoanState.RepaidPendingTransfer:
+        return <Badge variant="warning">Pending transfer</Badge>
       default:
         return <Badge variant="outline">Unknown</Badge>
     }
@@ -98,6 +111,7 @@ export function LoansDisplay({ account }: { account: UiWalletAccount }) {
                         repayMutation.mutateAsync({
                           loanAddress: loan.address,
                           programData: loan.data.programPubkey,
+                          loanId: loan.data.loanId,
                         })
                       }
                       disabled={repayMutation.isPending}

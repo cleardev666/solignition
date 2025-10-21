@@ -28,7 +28,7 @@ export default function SolignitionFeature() {
 
       {account ? (
         <div className="space-y-6">
-          <ProtocolStats />
+          <ProtocolStats address={account.address}/>
 
           <Tabs defaultValue="deposit" className="w-full">
             <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'}`}>

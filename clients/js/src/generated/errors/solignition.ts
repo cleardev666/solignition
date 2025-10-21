@@ -36,18 +36,20 @@ export const SOLIGNITION_ERROR__UNAUTHORIZED_BORROWER = 0x1778; // 6008
 export const SOLIGNITION_ERROR__LOAN_NOT_EXPIRED = 0x1779; // 6009
 /** LoanNotRecovered: Loan has not been recovered */
 export const SOLIGNITION_ERROR__LOAN_NOT_RECOVERED = 0x177a; // 6010
+/** LoanNotRepaid: Loan has not been repaid */
+export const SOLIGNITION_ERROR__LOAN_NOT_REPAID = 0x177b; // 6011
 /** Unauthorized: Unauthorized action */
-export const SOLIGNITION_ERROR__UNAUTHORIZED = 0x177b; // 6011
+export const SOLIGNITION_ERROR__UNAUTHORIZED = 0x177c; // 6012
 /** InvalidParameter: Invalid parameter */
-export const SOLIGNITION_ERROR__INVALID_PARAMETER = 0x177c; // 6012
+export const SOLIGNITION_ERROR__INVALID_PARAMETER = 0x177d; // 6013
 /** UnauthorizedDepositor: Unauthorized depositor */
-export const SOLIGNITION_ERROR__UNAUTHORIZED_DEPOSITOR = 0x177d; // 6013
+export const SOLIGNITION_ERROR__UNAUTHORIZED_DEPOSITOR = 0x177e; // 6014
 /** InvalidLoanId: Invalid loan ID */
-export const SOLIGNITION_ERROR__INVALID_LOAN_ID = 0x177e; // 6014
+export const SOLIGNITION_ERROR__INVALID_LOAN_ID = 0x177f; // 6015
 /** ProgramAlreadySet: Program already set for this loan */
-export const SOLIGNITION_ERROR__PROGRAM_ALREADY_SET = 0x177f; // 6015
+export const SOLIGNITION_ERROR__PROGRAM_ALREADY_SET = 0x1780; // 6016
 /** InvalidProgram: Invalid program pubkey */
-export const SOLIGNITION_ERROR__INVALID_PROGRAM = 0x1780; // 6016
+export const SOLIGNITION_ERROR__INVALID_PROGRAM = 0x1781; // 6017
 
 export type SolignitionError =
   | typeof SOLIGNITION_ERROR__INSUFFICIENT_BALANCE
@@ -62,6 +64,7 @@ export type SolignitionError =
   | typeof SOLIGNITION_ERROR__LOAN_NOT_ACTIVE
   | typeof SOLIGNITION_ERROR__LOAN_NOT_EXPIRED
   | typeof SOLIGNITION_ERROR__LOAN_NOT_RECOVERED
+  | typeof SOLIGNITION_ERROR__LOAN_NOT_REPAID
   | typeof SOLIGNITION_ERROR__PROGRAM_ALREADY_SET
   | typeof SOLIGNITION_ERROR__PROTOCOL_PAUSED
   | typeof SOLIGNITION_ERROR__UNAUTHORIZED
@@ -83,6 +86,7 @@ if (process.env.NODE_ENV !== 'production') {
     [SOLIGNITION_ERROR__LOAN_NOT_ACTIVE]: `Loan is not active`,
     [SOLIGNITION_ERROR__LOAN_NOT_EXPIRED]: `Loan has not expired yet`,
     [SOLIGNITION_ERROR__LOAN_NOT_RECOVERED]: `Loan has not been recovered`,
+    [SOLIGNITION_ERROR__LOAN_NOT_REPAID]: `Loan has not been repaid`,
     [SOLIGNITION_ERROR__PROGRAM_ALREADY_SET]: `Program already set for this loan`,
     [SOLIGNITION_ERROR__PROTOCOL_PAUSED]: `Protocol is currently paused`,
     [SOLIGNITION_ERROR__UNAUTHORIZED]: `Unauthorized action`,

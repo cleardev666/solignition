@@ -58,7 +58,7 @@ export type RequestLoanInstruction<
   TAccountVault extends string | AccountMeta<string> = string,
   TAccountAuthorityPda extends string | AccountMeta<string> = string,
   TAccountAdminPda extends string | AccountMeta<string> = string,
-  TAccountDeployerPda extends string | AccountMeta<string> = string,
+  TAccountDeployer extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends
     | string
     | AccountMeta<string> = '11111111111111111111111111111111',
@@ -88,9 +88,9 @@ export type RequestLoanInstruction<
       TAccountAdminPda extends string
         ? WritableAccount<TAccountAdminPda>
         : TAccountAdminPda,
-      TAccountDeployerPda extends string
-        ? WritableAccount<TAccountDeployerPda>
-        : TAccountDeployerPda,
+      TAccountDeployer extends string
+        ? WritableAccount<TAccountDeployer>
+        : TAccountDeployer,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -159,7 +159,7 @@ export type RequestLoanAsyncInput<
   TAccountVault extends string = string,
   TAccountAuthorityPda extends string = string,
   TAccountAdminPda extends string = string,
-  TAccountDeployerPda extends string = string,
+  TAccountDeployer extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
   TAccountProgram extends string = string,
@@ -170,7 +170,7 @@ export type RequestLoanAsyncInput<
   vault?: Address<TAccountVault>;
   authorityPda?: Address<TAccountAuthorityPda>;
   adminPda?: Address<TAccountAdminPda>;
-  deployerPda: Address<TAccountDeployerPda>;
+  deployer: Address<TAccountDeployer>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority?: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -187,7 +187,7 @@ export async function getRequestLoanInstructionAsync<
   TAccountVault extends string,
   TAccountAuthorityPda extends string,
   TAccountAdminPda extends string,
-  TAccountDeployerPda extends string,
+  TAccountDeployer extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
   TAccountProgram extends string,
@@ -200,7 +200,7 @@ export async function getRequestLoanInstructionAsync<
     TAccountVault,
     TAccountAuthorityPda,
     TAccountAdminPda,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -215,7 +215,7 @@ export async function getRequestLoanInstructionAsync<
     TAccountVault,
     TAccountAuthorityPda,
     TAccountAdminPda,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -232,7 +232,7 @@ export async function getRequestLoanInstructionAsync<
     vault: { value: input.vault ?? null, isWritable: true },
     authorityPda: { value: input.authorityPda ?? null, isWritable: false },
     adminPda: { value: input.adminPda ?? null, isWritable: true },
-    deployerPda: { value: input.deployerPda ?? null, isWritable: true },
+    deployer: { value: input.deployer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     program: { value: input.program ?? null, isWritable: false },
@@ -307,7 +307,7 @@ export async function getRequestLoanInstructionAsync<
       getAccountMeta(accounts.vault),
       getAccountMeta(accounts.authorityPda),
       getAccountMeta(accounts.adminPda),
-      getAccountMeta(accounts.deployerPda),
+      getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.systemProgram),
       getAccountMeta(accounts.eventAuthority),
       getAccountMeta(accounts.program),
@@ -324,7 +324,7 @@ export async function getRequestLoanInstructionAsync<
     TAccountVault,
     TAccountAuthorityPda,
     TAccountAdminPda,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -338,7 +338,7 @@ export type RequestLoanInput<
   TAccountVault extends string = string,
   TAccountAuthorityPda extends string = string,
   TAccountAdminPda extends string = string,
-  TAccountDeployerPda extends string = string,
+  TAccountDeployer extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
   TAccountProgram extends string = string,
@@ -349,7 +349,7 @@ export type RequestLoanInput<
   vault: Address<TAccountVault>;
   authorityPda: Address<TAccountAuthorityPda>;
   adminPda: Address<TAccountAdminPda>;
-  deployerPda: Address<TAccountDeployerPda>;
+  deployer: Address<TAccountDeployer>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -366,7 +366,7 @@ export function getRequestLoanInstruction<
   TAccountVault extends string,
   TAccountAuthorityPda extends string,
   TAccountAdminPda extends string,
-  TAccountDeployerPda extends string,
+  TAccountDeployer extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
   TAccountProgram extends string,
@@ -379,7 +379,7 @@ export function getRequestLoanInstruction<
     TAccountVault,
     TAccountAuthorityPda,
     TAccountAdminPda,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -393,7 +393,7 @@ export function getRequestLoanInstruction<
   TAccountVault,
   TAccountAuthorityPda,
   TAccountAdminPda,
-  TAccountDeployerPda,
+  TAccountDeployer,
   TAccountSystemProgram,
   TAccountEventAuthority,
   TAccountProgram
@@ -409,7 +409,7 @@ export function getRequestLoanInstruction<
     vault: { value: input.vault ?? null, isWritable: true },
     authorityPda: { value: input.authorityPda ?? null, isWritable: false },
     adminPda: { value: input.adminPda ?? null, isWritable: true },
-    deployerPda: { value: input.deployerPda ?? null, isWritable: true },
+    deployer: { value: input.deployer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     program: { value: input.program ?? null, isWritable: false },
@@ -437,7 +437,7 @@ export function getRequestLoanInstruction<
       getAccountMeta(accounts.vault),
       getAccountMeta(accounts.authorityPda),
       getAccountMeta(accounts.adminPda),
-      getAccountMeta(accounts.deployerPda),
+      getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.systemProgram),
       getAccountMeta(accounts.eventAuthority),
       getAccountMeta(accounts.program),
@@ -454,7 +454,7 @@ export function getRequestLoanInstruction<
     TAccountVault,
     TAccountAuthorityPda,
     TAccountAdminPda,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -473,7 +473,7 @@ export type ParsedRequestLoanInstruction<
     vault: TAccountMetas[3];
     authorityPda: TAccountMetas[4];
     adminPda: TAccountMetas[5];
-    deployerPda: TAccountMetas[6];
+    deployer: TAccountMetas[6];
     systemProgram: TAccountMetas[7];
     eventAuthority: TAccountMetas[8];
     program: TAccountMetas[9];
@@ -508,7 +508,7 @@ export function parseRequestLoanInstruction<
       vault: getNextAccount(),
       authorityPda: getNextAccount(),
       adminPda: getNextAccount(),
-      deployerPda: getNextAccount(),
+      deployer: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

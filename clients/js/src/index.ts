@@ -45,6 +45,14 @@ export function isRecoveredLoan(loan: Loan): boolean {
   return loan.state === 2 // LoanState.Recovered
 }
 
+export function isPendingLoan(loan: Loan): boolean {
+  return loan.state === 3 // LoanState.Pending
+}
+
+export function isRepaidPendingTransferLoan(loan: Loan): boolean {
+  return loan.state === 4 // LoanState.RepaidPendingTransfer
+}
+
 // Helper to calculate total repayment amount
 export function calculateTotalRepayment(loan: Loan): bigint {
   const interest = (loan.principal * BigInt(loan.interestRateBps)) / 10000n

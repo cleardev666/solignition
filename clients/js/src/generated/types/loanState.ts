@@ -20,6 +20,7 @@ export enum LoanState {
   Repaid,
   Recovered,
   Pending,
+  RepaidPendingTransfer,
 }
 
 export type LoanStateArgs = LoanState;

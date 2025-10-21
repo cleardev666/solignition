@@ -49,6 +49,7 @@ export type RecoverLoanInstruction<
   TAccountAdmin extends string | AccountMeta<string> = string,
   TAccountProtocolConfig extends string | AccountMeta<string> = string,
   TAccountLoan extends string | AccountMeta<string> = string,
+  TAccountDeployer extends string | AccountMeta<string> = string,
   TAccountAdminPda extends string | AccountMeta<string> = string,
   TAccountTreasury extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends
@@ -71,6 +72,10 @@ export type RecoverLoanInstruction<
       TAccountLoan extends string
         ? WritableAccount<TAccountLoan>
         : TAccountLoan,
+      TAccountDeployer extends string
+        ? ReadonlySignerAccount<TAccountDeployer> &
+            AccountSignerMeta<TAccountDeployer>
+        : TAccountDeployer,
       TAccountAdminPda extends string
         ? WritableAccount<TAccountAdminPda>
         : TAccountAdminPda,
@@ -121,6 +126,7 @@ export type RecoverLoanAsyncInput<
   TAccountAdmin extends string = string,
   TAccountProtocolConfig extends string = string,
   TAccountLoan extends string = string,
+  TAccountDeployer extends string = string,
   TAccountAdminPda extends string = string,
   TAccountTreasury extends string = string,
   TAccountSystemProgram extends string = string,
@@ -130,6 +136,7 @@ export type RecoverLoanAsyncInput<
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig?: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
+  deployer: TransactionSigner<TAccountDeployer>;
   adminPda?: Address<TAccountAdminPda>;
   treasury: Address<TAccountTreasury>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -141,6 +148,7 @@ export async function getRecoverLoanInstructionAsync<
   TAccountAdmin extends string,
   TAccountProtocolConfig extends string,
   TAccountLoan extends string,
+  TAccountDeployer extends string,
   TAccountAdminPda extends string,
   TAccountTreasury extends string,
   TAccountSystemProgram extends string,
@@ -152,6 +160,7 @@ export async function getRecoverLoanInstructionAsync<
     TAccountAdmin,
     TAccountProtocolConfig,
     TAccountLoan,
+    TAccountDeployer,
     TAccountAdminPda,
     TAccountTreasury,
     TAccountSystemProgram,
@@ -165,6 +174,7 @@ export async function getRecoverLoanInstructionAsync<
     TAccountAdmin,
     TAccountProtocolConfig,
     TAccountLoan,
+    TAccountDeployer,
     TAccountAdminPda,
     TAccountTreasury,
     TAccountSystemProgram,
@@ -180,6 +190,7 @@ export async function getRecoverLoanInstructionAsync<
     admin: { value: input.admin ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
     loan: { value: input.loan ?? null, isWritable: true },
+    deployer: { value: input.deployer ?? null, isWritable: false },
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     treasury: { value: input.treasury ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
@@ -232,6 +243,7 @@ export async function getRecoverLoanInstructionAsync<
       getAccountMeta(accounts.admin),
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.loan),
+      getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.treasury),
       getAccountMeta(accounts.systemProgram),
@@ -245,6 +257,7 @@ export async function getRecoverLoanInstructionAsync<
     TAccountAdmin,
     TAccountProtocolConfig,
     TAccountLoan,
+    TAccountDeployer,
     TAccountAdminPda,
     TAccountTreasury,
     TAccountSystemProgram,
@@ -257,6 +270,7 @@ export type RecoverLoanInput<
   TAccountAdmin extends string = string,
   TAccountProtocolConfig extends string = string,
   TAccountLoan extends string = string,
+  TAccountDeployer extends string = string,
   TAccountAdminPda extends string = string,
   TAccountTreasury extends string = string,
   TAccountSystemProgram extends string = string,
@@ -266,6 +280,7 @@ export type RecoverLoanInput<
   admin: TransactionSigner<TAccountAdmin>;
   protocolConfig: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
+  deployer: TransactionSigner<TAccountDeployer>;
   adminPda: Address<TAccountAdminPda>;
   treasury: Address<TAccountTreasury>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -277,6 +292,7 @@ export function getRecoverLoanInstruction<
   TAccountAdmin extends string,
   TAccountProtocolConfig extends string,
   TAccountLoan extends string,
+  TAccountDeployer extends string,
   TAccountAdminPda extends string,
   TAccountTreasury extends string,
   TAccountSystemProgram extends string,
@@ -288,6 +304,7 @@ export function getRecoverLoanInstruction<
     TAccountAdmin,
     TAccountProtocolConfig,
     TAccountLoan,
+    TAccountDeployer,
     TAccountAdminPda,
     TAccountTreasury,
     TAccountSystemProgram,
@@ -300,6 +317,7 @@ export function getRecoverLoanInstruction<
   TAccountAdmin,
   TAccountProtocolConfig,
   TAccountLoan,
+  TAccountDeployer,
   TAccountAdminPda,
   TAccountTreasury,
   TAccountSystemProgram,
@@ -314,6 +332,7 @@ export function getRecoverLoanInstruction<
     admin: { value: input.admin ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
     loan: { value: input.loan ?? null, isWritable: true },
+    deployer: { value: input.deployer ?? null, isWritable: false },
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     treasury: { value: input.treasury ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
@@ -337,6 +356,7 @@ export function getRecoverLoanInstruction<
       getAccountMeta(accounts.admin),
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.loan),
+      getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.treasury),
       getAccountMeta(accounts.systemProgram),
@@ -350,6 +370,7 @@ export function getRecoverLoanInstruction<
     TAccountAdmin,
     TAccountProtocolConfig,
     TAccountLoan,
+    TAccountDeployer,
     TAccountAdminPda,
     TAccountTreasury,
     TAccountSystemProgram,
@@ -367,11 +388,12 @@ export type ParsedRecoverLoanInstruction<
     admin: TAccountMetas[0];
     protocolConfig: TAccountMetas[1];
     loan: TAccountMetas[2];
-    adminPda: TAccountMetas[3];
-    treasury: TAccountMetas[4];
-    systemProgram: TAccountMetas[5];
-    eventAuthority: TAccountMetas[6];
-    program: TAccountMetas[7];
+    deployer: TAccountMetas[3];
+    adminPda: TAccountMetas[4];
+    treasury: TAccountMetas[5];
+    systemProgram: TAccountMetas[6];
+    eventAuthority: TAccountMetas[7];
+    program: TAccountMetas[8];
   };
   data: RecoverLoanInstructionData;
 };
@@ -384,7 +406,7 @@ export function parseRecoverLoanInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedRecoverLoanInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 8) {
+  if (instruction.accounts.length < 9) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -400,6 +422,7 @@ export function parseRecoverLoanInstruction<
       admin: getNextAccount(),
       protocolConfig: getNextAccount(),
       loan: getNextAccount(),
+      deployer: getNextAccount(),
       adminPda: getNextAccount(),
       treasury: getNextAccount(),
       systemProgram: getNextAccount(),

@@ -24,8 +24,7 @@ export type Solignition = {
     "Recovery Flow for Expired Loans:",
     "1. Call `recover_loan` when loan expires to mark it recovered",
     "2. Off-chain deployer can close the program account",
-    "3. Call `return_reclaimed_sol` to return recovered SOL to vault",
-    "4. Optionally call `reclaim_program_authority` for audit trail"
+    "3. Call `return_reclaimed_sol` to return recovered SOL to vault"
   ],
   "instructions": [
     {
@@ -396,6 +395,10 @@ export type Solignition = {
           }
         },
         {
+          "name": "deployer",
+          "signer": true
+        },
+        {
           "name": "adminPda",
           "writable": true,
           "pda": {
@@ -458,9 +461,6 @@ export type Solignition = {
     },
     {
       "name": "repayLoan",
-      "docs": [
-        "Repay loan and transfer program authority"
-      ],
       "discriminator": [
         224,
         93,
@@ -495,9 +495,8 @@ export type Solignition = {
                 ]
               },
               {
-                "kind": "account",
-                "path": "protocol_config.loan_counter",
-                "account": "protocolConfig"
+                "kind": "arg",
+                "path": "loanId"
               },
               {
                 "kind": "account",
@@ -544,30 +543,6 @@ export type Solignition = {
           }
         },
         {
-          "name": "authorityPda",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "programData"
-        },
-        {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         },
@@ -604,7 +579,12 @@ export type Solignition = {
           "name": "program"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "loanId",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "requestLoan",
@@ -730,7 +710,7 @@ export type Solignition = {
           }
         },
         {
-          "name": "deployerPda",
+          "name": "deployer",
           "writable": true
         },
         {
@@ -1111,6 +1091,123 @@ export type Solignition = {
         {
           "name": "isPaused",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "transferAuthorityToBorrower",
+      "discriminator": [
+        159,
+        89,
+        124,
+        24,
+        191,
+        80,
+        144,
+        187
+      ],
+      "accounts": [
+        {
+          "name": "deployer",
+          "signer": true
+        },
+        {
+          "name": "protocolConfig",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "loan",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  97,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "loanId"
+              },
+              {
+                "kind": "account",
+                "path": "loan.borrower",
+                "account": "loan"
+              }
+            ]
+          }
+        },
+        {
+          "name": "borrower",
+          "writable": true
+        },
+        {
+          "name": "programData",
+          "writable": true
+        },
+        {
+          "name": "bpfUpgradeableLoader",
+          "address": "BPFLoaderUpgradeab1e11111111111111111111111"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "eventAuthority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  95,
+                  95,
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "program"
+        }
+      ],
+      "args": [
+        {
+          "name": "loanId",
+          "type": "u64"
         }
       ]
     },
@@ -1608,31 +1705,36 @@ export type Solignition = {
     },
     {
       "code": 6011,
+      "name": "loanNotRepaid",
+      "msg": "Loan has not been repaid"
+    },
+    {
+      "code": 6012,
       "name": "unauthorized",
       "msg": "Unauthorized action"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "invalidParameter",
       "msg": "Invalid parameter"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "unauthorizedDepositor",
       "msg": "Unauthorized depositor"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "invalidLoanId",
       "msg": "Invalid loan ID"
     },
     {
-      "code": 6015,
+      "code": 6016,
       "name": "programAlreadySet",
       "msg": "Program already set for this loan"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "invalidProgram",
       "msg": "Invalid program pubkey"
     }
@@ -1940,6 +2042,9 @@ export type Solignition = {
           },
           {
             "name": "pending"
+          },
+          {
+            "name": "repaidPendingTransfer"
           }
         ]
       }

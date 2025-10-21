@@ -9,15 +9,16 @@
     "resolveJsonModule": true,
     "strict": false,
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"],
+    //"rootDir": "src",
+    "types": ["node","mocha","chai","jest"],
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
       "@coral-xyz/anchor": ["../node_modules/@coral-xyz/anchor"],
+      "@/*": ["./src/*"]
       
     }
   },
-  "include": ["src"],
+  "include": ["src", "tests", "../anchor/target/types/**/*"],
   "exclude": ["node_modules"]
 }
