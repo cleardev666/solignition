@@ -943,21 +943,6 @@ pub struct RepayLoan<'info> {
         bump
     )]
     pub vault: AccountInfo<'info>,
-    /* 
-    /// CHECK: Authority PDA that currently controls the program
-    #[account(
-        seeds = [AUTHORITY_SEED],
-        bump
-    )]
-    pub authority_pda: AccountInfo<'info>,
-    /// CHECK: Deployer wallet that currently controls the program upgrade authority
-    #[account(
-        constraint = deployer.key() == protocol_config.deployer @ ErrorCode::Unauthorized
-    )]
-    pub deployer: Signer<'info>,  // Must sign to transfer authority
-    
-    /// CHECK: Program data account for the deployed program
-    pub program_data: AccountInfo<'info>,*/
     
     pub system_program: Program<'info, System>,
 }

@@ -1221,7 +1221,7 @@ class ApiServer {
       try {
         const { signature, borrower, loanId } = req.body;
         
-        if (!signature || !borrower) {
+        if (!loanId || !borrower) {
           logger.warn('Notify loan request missing required fields', { signature, borrower });
           return res.status(400).json({ 
             error: 'Transaction signature and borrower address required' 

@@ -1,93 +1,246 @@
-# solignition
+# Solignition
 
-This is a React/Vite app containing:
+A decentralized lending protocol on Solana that provides liquidity for Solana program deployments. Depositors earn yield while borrowers access SOL to deploy their programs to the network.
 
-- Tailwind and Shadcn UI for styling
-- [Gill](https://gill.site/) Solana SDK
-- Shadcn [Wallet UI](https://registry.wallet-ui.dev) components
-- A basic Solignition Solana program written in Anchor
-- [codama](https://github.com/codama-idl/codama) to generate a JS sdk for the program
-- UI components for interacting with the Solignition program using the Anchor generated client
+## Overview
+
+Solignition connects liquidity providers with developers who need SOL for program deployment. The protocol:
+
+- **Enables Deposits**: Users deposit SOL into a shared liquidity pool and earn yield over time
+- **Facilitates Program Deployment Loans**: Borrowers request loans to cover the cost of deploying Solana programs
+- **Automates Deployments**: Includes a deployer service that handles program deployment when loans are approved
+- **Distributes Yield**: Interest from loans is distributed proportionally to depositors based on their share of the pool
+- **Manages Loan Lifecycle**: Tracks loans through their lifecycle (Active → Repaid/Recovered)
+
+## Core Features
+
+### For Liquidity Providers (Depositors)
+- **Deposit SOL**: Contribute to the liquidity pool
+- **Earn Yield**: Receive proportional share of interest from loans
+- **Withdraw Anytime**: Withdraw deposits plus accumulated yield (subject to available liquidity)
+- **Track Performance**: Monitor deposits and earnings through the web interface
+
+### For Borrowers
+- **Request Loans**: Submit loan requests specifying amount and program to deploy
+- **Automated Deployment**: Protocol deploys your program upon loan approval
+- **Authority Transfer**: Receive upgrade authority for your deployed program
+- **Flexible Repayment**: Repay loans with accrued interest at your convenience
+
+### For Protocol Admins
+- **Configure Parameters**: Set interest rates, admin fees, and other protocol parameters
+- **Manage Loans**: Recover loans if borrowers fail to repay
+- **Protocol Controls**: Pause/unpause protocol in emergencies
+- **Fee Collection**: Treasury receives admin fee split from loan interest
+
+## Architecture
+
+### Solana Program (Anchor)
+Located in `anchor/programs/solignition/src/lib.rs`, the on-chain program handles:
+- Protocol initialization and configuration
+- Deposit and withdrawal operations
+- Loan request, repayment, and recovery
+- Interest calculations (time-based, using basis points)
+- Yield distribution to depositors
+- Authority management for deployed programs
+
+**Key Accounts:**
+- `ProtocolConfig`: Global protocol state and configuration
+- `DepositorRecord`: Individual depositor balance and yield tracking
+- `Loan`: Loan details including amount, interest rate, timestamps, and state
+
+### Web Interface (React + Vite)
+Modern web3 interface built with:
+- **Gill SDK**: Simplified Solana wallet integration
+- **Codama-Generated Client**: Type-safe TypeScript client from program IDL
+- **shadcn/ui + Tailwind**: Professional, accessible UI components
+- **Wallet UI Components**: Pre-built wallet connection components
+
+### Deployer Service
+Automated deployment service (`deployer/`) that:
+- Monitors loan requests
+- Deploys programs to Solana when loans are approved
+- Manages deployment state and binaries
+- Transfers program upgrade authority to borrowers
 
 ## Getting Started
 
+### Prerequisites
+- Node.js 18+ and npm
+- Rust and Anchor CLI (`anchor-cli`)
+- Solana CLI tools
+- A Solana wallet with devnet SOL
+
 ### Installation
 
-#### Download the template
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd solignition
 
-```shell
-npx create-solana-dapp@latest -t gh:solana-foundation/templates/gill/solignition
-```
-
-#### Install Dependencies
-
-```shell
+# Install dependencies
 npm install
 ```
 
-## Apps
+### Setup
 
-### anchor
+Generate and sync program ID:
 
-This is a Solana program written in Rust using the Anchor framework.
-
-#### Commands
-
-You can use any normal anchor commands. Either move to the `anchor` directory and run the `anchor` command or prefix the
-command with `npm`, eg: `npm run anchor`.
-
-#### Sync the program id:
-
-Running this command will create a new keypair in the `anchor/target/deploy` directory and save the address to the
-Anchor config file and update the `declare_id!` macro in the `./src/lib.rs` file of the program. This will also update
-the constant in the `anchor/src/solignition-exports.ts` file.
-
-```shell
+```bash
 npm run setup
 ```
 
-```shell
-npm run anchor keys sync
-```
+This creates a new program keypair and updates:
+- `Anchor.toml` configuration
+- Program's `declare_id!` macro
+- TypeScript client exports
 
-#### Build the program:
+### Build
 
-```shell
+Build the Solana program:
+
+```bash
 npm run anchor-build
 ```
 
-#### Start the test validator with the program deployed:
+Generate the TypeScript client:
 
-```shell
+```bash
+npm run anchor generate
+```
+
+### Local Development
+
+Start a local validator with the program deployed:
+
+```bash
 npm run anchor-localnet
 ```
 
-#### Run the tests
+In another terminal, start the web interface:
 
-```shell
-npm run anchor-test
-```
-
-#### Deploy to Devnet
-
-```shell
-npm run anchor deploy --provider.cluster devnet
-```
-
-### web
-
-This is a React app that uses the Anchor generated client to interact with the Solana program.
-
-#### Commands
-
-Start the app
-
-```shell
+```bash
 npm run dev
 ```
 
-Build the app
+Visit `http://localhost:5173` to interact with the protocol.
 
-```shell
-npm run build
+### Testing
+
+Run the Anchor program tests:
+
+```bash
+npm run anchor-test
 ```
+
+The test suite includes comprehensive unit tests for:
+- Interest calculations
+- Yield distribution
+- Loan lifecycle management
+- Edge cases and overflow protection
+
+### Deployment
+
+Deploy to Solana Devnet:
+
+```bash
+npm run anchor deploy --provider.cluster devnet
+```
+
+Update the cluster in the web interface to connect to devnet.
+
+## Project Structure
+
+```
+solignition/
+├── anchor/                      # Solana program
+│   ├── programs/solignition/    # Anchor program source
+│   ├── src/                     # TypeScript client and helpers
+│   │   ├── client/js/generated/ # Codama-generated client
+│   │   └── solignition-exports.ts
+│   └── tests/                   # Program tests
+├── deployer/                    # Deployment automation service
+│   ├── src/                     # Deployer source code
+│   └── binaries/                # Cached program binaries
+├── src/                         # Web interface
+│   ├── components/              # React components
+│   │   ├── solana/              # Wallet and provider components
+│   │   └── ui/                  # shadcn/ui components
+│   └── features/                # Feature-specific components
+│       ├── protocol/            # Protocol interaction UI
+│       └── account/             # Account management
+└── clients/js/                  # Additional generated clients
+```
+
+## Key Concepts
+
+### Interest Calculation
+Interest is calculated using a time-based formula:
+```
+interest = (principal × rate_bps × elapsed_seconds) / (10,000 × SECONDS_PER_YEAR)
+```
+- Rates are in basis points (bps): 100 bps = 1%
+- Time-based accrual: Interest accumulates proportionally to loan duration
+
+### Yield Distribution
+When loans are repaid:
+1. Admin fee is deducted (configured in protocol)
+2. Remaining yield is distributed proportionally to all depositors
+3. Each depositor's share = (their deposit / total deposits) × yield
+
+### Loan States
+- **Active**: Loan is outstanding, interest is accruing
+- **Repaid**: Borrower has fully repaid the loan with interest
+- **Recovered**: Admin has recovered the loan (borrower failed to repay)
+
+## Configuration
+
+Protocol parameters (set during initialization or via `update_config`):
+- `default_interest_rate_bps`: Base interest rate for loans
+- `default_admin_fee_bps`: Percentage of interest allocated to protocol treasury
+- `admin_fee_split_bps`: Split between admin and deployer service
+- Pause functionality for emergency stops
+
+## Security Considerations
+
+⚠️ **This is experimental software. Use at your own risk.**
+
+- Protocol admin has privileged access (recovery, configuration)
+- Loans are not collateralized - borrowers can default
+- No slashing mechanism for failed deployments
+- Audit recommended before mainnet deployment
+
+## Development Tools
+
+This project uses:
+- **Anchor 0.30+**: Solana program framework
+- **Codama**: IDL-to-client code generation
+- **Gill SDK**: Modern Solana web3 library
+- **TypeScript**: Type-safe client development
+- **Vitest**: Fast unit testing
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+## License
+#
+#
+#
+## Resources
+
+- [Anchor Documentation](https://www.anchor-lang.com/)
+- [Solana Documentation](https://docs.solana.com/)
+- [Gill SDK](https://gill.site/)
+- [Codama](https://github.com/codama-idl/codama)
+
+## Support
+
+- Issues: [GitHub Issues](repo-url/issues)
+- Discussions: [GitHub Discussions](repo-url/discussions)
+- Discord: [Discord Link]
+
+---

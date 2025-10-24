@@ -37,3 +37,7 @@ dist-ssr
 /anchor/target/.rustc_info.json
 test-ledger
 **/*.rs.bk
+
+# Deployer
+/deployer/deployer-state
+/deployer/binaries

@@ -35,11 +35,11 @@ export function LoansDisplay({ account }: { account: UiWalletAccount }) {
       case LoanState.Repaid:
         return <Badge className="success">Repaid</Badge>
       case LoanState.Recovered:
-        return <Badge variant="primary">Recovered</Badge>
+        return <Badge variant="secondary">Recovered</Badge>
       case LoanState.Pending:
         return <Badge variant="destructive">Pending</Badge>
       case LoanState.RepaidPendingTransfer:
-        return <Badge variant="warning">Pending transfer</Badge>
+        return <Badge variant="bg-green-500">Pending transfer</Badge>
       default:
         return <Badge variant="outline">Unknown</Badge>
     }
