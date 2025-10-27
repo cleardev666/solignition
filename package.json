@@ -3,7 +3,8 @@
   "workspaces": [
     "anchor/*",
     "deploy/*",
-    "src/*"
+    "src/*",
+    "landing/*"
   ],
   "scripts": {
     "anchor": "cd anchor && anchor",

@@ -1183,16 +1183,7 @@ class ApiServer {
     logger.info('CORS middleware configured');
     
   }
-  /* 
-  private setupMiddleware(): void {
-    // Configure CORS to allow requests from your frontend
-    this.app.use(cors({
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-      credentials: true,
-    }));
-    this.app.use(express.json());
-  }
-*/
+  
   private setupRoutes(): void {
     // Health check
     this.app.get('/health', async (req, res) => {

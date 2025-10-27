@@ -1161,17 +1161,6 @@ impl Loan {
     pub const SIZE: usize = 8 + 32 + 32 + 8 + 8 + 2 + 2 + 8 + 8 + 1 + 32 + 9 + 9 + 9 + 9 + 9 + 8;
 }
 
-#[account]
-pub struct BorrowerLoanRecord{
-    pub borrower: Pubkey,
-    pub loan_id: u64,
-    pub requested_lamports: u64,
-    pub repayed: bool,
-    pub expire_ts: i64,
-    pub deployed_program: Pubkey,
-    pub bump: u8,
-}
-
 #[derive(Debug)]
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
 pub enum LoanState {

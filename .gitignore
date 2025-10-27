@@ -41,3 +41,6 @@ test-ledger
 # Deployer
 /deployer/deployer-state
 /deployer/binaries
+
+# landing 
+/landing/node_modules
