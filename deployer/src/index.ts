@@ -1058,7 +1058,7 @@ class DeployerOrchestrator {
     await this.processRecovery(loanId);
   }
 
-  private async processRecovery(loanId: string): Promise<void> {
+  public async processRecovery(loanId: string): Promise<void> {
     logger.info('Processing loan recovery', { loanId });
 
     const deployment = await this.stateManager.getDeployment(loanId);
@@ -1123,7 +1123,7 @@ class ApiServer {
     this.upload = multer({
       dest: config.uploadPath,
       limits: {
-        fileSize: 100 * 1024 * 1024, // 100MB limit
+        fileSize: 10 * 1024 * 1024, // 10MB limit
       },
       fileFilter: (req, file, cb) => {
         if (path.extname(file.originalname) !== '.so') {
@@ -1693,6 +1693,9 @@ async function main() {
     const deployerWallet = new Wallet(deployerKeypair);
     const provider = new AnchorProvider(connection, deployerWallet, opts);
     const program = new Program(idl, provider);
+
+    //const loans =  await program.account.loan.all();
+    //logger.info(`Loaded program: ${config.programId.toBase58()}`, { totalLoans: loans });
 
     // Initialize components
     logger.info('Initializing components...');

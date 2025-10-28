@@ -1,10 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useProtocolConfig } from '../data-access/use-protocol-config'
-import { useLoans } from '../data-access/use-loans'
+import { useActiveLoans, useLoans } from '../data-access/use-loans'
 
-export function ProtocolStats(address: string) {
+export function ProtocolStats({ address }: { address?: string }) {
   const configQuery = useProtocolConfig()
-  const loansQuery = useLoans(address)
+  const loansQuery = useLoans()
+  const activeQuery = useActiveLoans();
 
   console.log('ProtocolStats - loans query:', {
     isLoading: loansQuery.isLoading,
@@ -43,7 +44,8 @@ export function ProtocolStats(address: string) {
 
   const config = configQuery.data.data;
   console.log('All loans data:', loansQuery.data);
-  const activeLoans = loansQuery.data?.filter(loan => loan.data.state === 0).length ?? 0
+  //const activeLoans = loansQuery.data?.filter(loan => loan.data.state === 0).length ?? 0
+  const activeLoans = activeQuery.data?.filter(loan => loan.data.state === 0).length ?? 0
   console.log('Active loans count:', activeLoans)
 
   const formatSOL = (lamports: bigint) => {

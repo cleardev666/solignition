@@ -10,7 +10,7 @@
     "check-idl": "node check-idl.js"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.31.1",
+    "@coral-xyz/anchor": "^0.32.1",
     "@solana/web3.js": "^1.95.0",
     "bs58": "^5.0.0",
     "cors": "2.8.5",

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Rocket, Shield, TrendingUp, Coins, FileText, Lock, Mail, Globe, ChevronRight, Zap, Users, BarChart3, Check, ArrowRight, X } from 'lucide-react';
+
+import { Rocket, Shield, TrendingUp, Coins, FileText, Lock, Mail, ChevronRight, Zap, Users, BarChart3, Check, ArrowRight, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 
 const SolignitionLanding = () => {

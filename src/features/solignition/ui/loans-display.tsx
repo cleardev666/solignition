@@ -3,13 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { AppExplorerLink } from '@/components/app-explorer-link'
-import { useLoansByBorrower } from '../data-access/use-loans'
+import { useLoans, useLoansByBorrower } from '../data-access/use-loans'
 import { useRepayLoanMutation } from '../data-access/use-repay-loan-mutation'
 import { LoanState } from '@project/anchor'
 import { address } from '@solana/kit'
 
 export function LoansDisplay({ account }: { account: UiWalletAccount }) {
-  const loansQuery = useLoansByBorrower(address(account.address))
+  const loansQuery = useLoans(address(account.address))
   const repayMutation = useRepayLoanMutation({ account })
   console.log('LoansDisplay rendering for account:', account.address)
   console.log('LoansDisplay query state:', {
