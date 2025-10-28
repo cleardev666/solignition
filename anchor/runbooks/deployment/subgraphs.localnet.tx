@@ -125,11 +125,20 @@ action "index_protocol_config" "svm::deploy_subgraph" {
 #    program_id = action.deploy_solignition.program_id
 #    program_idl = action.deploy_solignition.program_idl
 #    slot = action.deploy_solignition.slot
- #   pda {
-  #      type = "Loan"
-   #     instruction {
-    #        name="request_loan"
-     #       account_name="loan"
-      #  }
-    #}
+#    pda {
+#        type = "Loan"
+#        instruction {
+#            name="request_loan"
+#            account_name="loan"
+#        }
+#        instruction {
+#            name="set_deployed_program"
+#            account_name="loan"
+#        }
+#        instruction {
+#            name="transfer_authority_to_borrower"
+#            account_name="loan"
+#        }
+#        
+#    }
 #}
