@@ -322,7 +322,7 @@
     {
       "name": "recover_loan",
       "docs": [
-        "Recover expired loan"
+        "mark expired loan for recovery"
       ],
       "discriminator": [
         16,
@@ -377,8 +377,8 @@
               },
               {
                 "kind": "account",
-                "path": "protocol_config.loan_counter",
-                "account": "ProtocolConfig"
+                "path": "loan.loan_id",
+                "account": "Loan"
               },
               {
                 "kind": "account",
@@ -455,6 +455,9 @@
     },
     {
       "name": "repay_loan",
+      "docs": [
+        "Repay an active loan with interest"
+      ],
       "discriminator": [
         224,
         93,
@@ -665,28 +668,10 @@
           }
         },
         {
-          "name": "authority_pda",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "admin_pda",
+          "docs": [
+            "/// CHECK: Authority PDA for program control\n    #[account(\n        seeds = [AUTHORITY_SEED],\n        bump\n    )]\n    pub authority_pda: AccountInfo<'info>,"
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -817,8 +802,8 @@
               },
               {
                 "kind": "account",
-                "path": "protocol_config.loan_counter",
-                "account": "ProtocolConfig"
+                "path": "loan.loan_id",
+                "account": "Loan"
               },
               {
                 "kind": "account",
@@ -847,8 +832,9 @@
           }
         },
         {
-          "name": "deployer_pda",
-          "writable": true
+          "name": "deployer",
+          "writable": true,
+          "signer": true
         },
         {
           "name": "system_program",
@@ -1485,19 +1471,6 @@
   ],
   "events": [
     {
-      "name": "AuthorityReclaimed",
-      "discriminator": [
-        216,
-        107,
-        174,
-        145,
-        179,
-        21,
-        100,
-        39
-      ]
-    },
-    {
       "name": "AuthorityTransferred",
       "discriminator": [
         245,
@@ -1734,26 +1707,6 @@
     }
   ],
   "types": [
-    {
-      "name": "AuthorityReclaimed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "loan_id",
-            "type": "u64"
-          },
-          {
-            "name": "program_pubkey",
-            "type": "pubkey"
-          },
-          {
-            "name": "authority",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
     {
       "name": "AuthorityTransferred",
       "type": {

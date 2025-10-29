@@ -379,16 +379,17 @@ describe("solignition", () => {
       const config0 = await program.account.protocolConfig.fetch(protocolConfigPda);
       //loanId = 1;
       [loanPda] = PublicKey.findProgramAddressSync(
-        [LOAN_SEED, new anchor.BN(config0.loanCounter).toArrayLike(Buffer, "le", 8)],
+        [LOAN_SEED, new anchor.BN(config0.loanCounter).toArrayLike(Buffer, "le", 8),borrower.publicKey.toBuffer()],
         program.programId
       );
     });
 
     it("should allow borrower to request a loan", async () => {
       const config0 = await program.account.protocolConfig.fetch(protocolConfigPda);
+      console.log("Current loan counter:", config0.loanCounter.toString());
       //loanId = 1;
       [loanPda] = PublicKey.findProgramAddressSync(
-        [LOAN_SEED, new anchor.BN(config0.loanCounter).toArrayLike(Buffer, "le", 8)],
+        [LOAN_SEED, new anchor.BN(config0.loanCounter).toArrayLike(Buffer, "le", 8),borrower.publicKey.toBuffer() ],
         program.programId
       );
     
@@ -412,10 +413,10 @@ describe("solignition", () => {
           loan: loanPda,
           protocolConfig: protocolConfigPda,
           vault: vaultPda,
-          authorityPda: authorityPda,
+          //authorityPda: authorityPda,
           adminPda: adminPda,
-          deployerPda: deployer.publicKey,
-          systemProgram: SystemProgram.programId,
+          deployer: deployer.publicKey,
+          //systemProgram: SystemProgram.programId,
         })
         .signers([borrower])
         .rpc();
@@ -473,8 +474,8 @@ describe("solignition", () => {
           vault: vaultPda,
           authorityPda: authorityPda,
           adminPda: adminPda,
-          deployerPda: deployer.publicKey,
-          systemProgram: SystemProgram.programId,
+          deployer: deployer.publicKey,
+          //systemProgram: SystemProgram.programId,
         })
         .signers([depositor1])
         .rpc();

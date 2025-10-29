@@ -328,7 +328,7 @@ export type Solignition = {
     {
       "name": "recoverLoan",
       "docs": [
-        "Recover expired loan"
+        "mark expired loan for recovery"
       ],
       "discriminator": [
         16,
@@ -383,8 +383,8 @@ export type Solignition = {
               },
               {
                 "kind": "account",
-                "path": "protocol_config.loan_counter",
-                "account": "protocolConfig"
+                "path": "loan.loan_id",
+                "account": "loan"
               },
               {
                 "kind": "account",
@@ -461,6 +461,9 @@ export type Solignition = {
     },
     {
       "name": "repayLoan",
+      "docs": [
+        "Repay an active loan with interest"
+      ],
       "discriminator": [
         224,
         93,
@@ -671,28 +674,10 @@ export type Solignition = {
           }
         },
         {
-          "name": "authorityPda",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "adminPda",
+          "docs": [
+            "/// CHECK: Authority PDA for program control\n    #[account(\n        seeds = [AUTHORITY_SEED],\n        bump\n    )]\n    pub authority_pda: AccountInfo<'info>,"
+          ],
           "writable": true,
           "pda": {
             "seeds": [
@@ -823,8 +808,8 @@ export type Solignition = {
               },
               {
                 "kind": "account",
-                "path": "protocol_config.loan_counter",
-                "account": "protocolConfig"
+                "path": "loan.loan_id",
+                "account": "loan"
               },
               {
                 "kind": "account",
@@ -853,8 +838,9 @@ export type Solignition = {
           }
         },
         {
-          "name": "deployerPda",
-          "writable": true
+          "name": "deployer",
+          "writable": true,
+          "signer": true
         },
         {
           "name": "systemProgram",
@@ -1491,19 +1477,6 @@ export type Solignition = {
   ],
   "events": [
     {
-      "name": "authorityReclaimed",
-      "discriminator": [
-        216,
-        107,
-        174,
-        145,
-        179,
-        21,
-        100,
-        39
-      ]
-    },
-    {
       "name": "authorityTransferred",
       "discriminator": [
         245,
@@ -1740,26 +1713,6 @@ export type Solignition = {
     }
   ],
   "types": [
-    {
-      "name": "authorityReclaimed",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "loanId",
-            "type": "u64"
-          },
-          {
-            "name": "programPubkey",
-            "type": "pubkey"
-          },
-          {
-            "name": "authority",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
     {
       "name": "authorityTransferred",
       "type": {

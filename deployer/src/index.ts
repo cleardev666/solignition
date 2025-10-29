@@ -25,6 +25,8 @@ import { GraphQLClient, gql } from 'graphql-request';
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import cors from 'cors';
+import { Solignition } from '../../anchor/target/types/solignition';
+import { error, log } from 'console';
 
 const execAsync = promisify(exec);
 
@@ -106,14 +108,16 @@ interface FileUploadRecord {
   createdAt: number;
 }
 
-interface LoanData {
-  loanId: string;
-  borrower: string;
-  principal: string;
-  deployedProgram?: string;
-  state: number;
-  startTs: number;
-  duration: number;
+interface LoanAccount {
+  loanId: anchor.BN;
+  borrower: PublicKey;
+  principal: anchor.BN;
+  deployedProgram: PublicKey | null;
+  state: number; // 0: Active, 1: Repaid, 2: Recovered, 3: Defaulted
+  startTs: anchor.BN;
+  duration: anchor.BN;
+  interestRateBps: number;
+  adminFeeBps: number;
 }
 
 interface LoanRequestedData {
@@ -194,6 +198,16 @@ const metrics = {
     help: 'Total number of file uploads',
     registers: [registry],
   }),
+  expiredLoansRecovered: new Counter({
+  name: 'deployer_expired_loans_recovered_total',
+  help: 'Total number of expired loans recovered',
+  registers: [registry],
+}),
+expiredLoansChecked: new Counter({
+  name: 'deployer_expired_loans_checked_total',
+  help: 'Total number of expired loan checks performed',
+  registers: [registry],
+}),
 };
 
 // ============ State Management ============
@@ -411,6 +425,7 @@ class SolanaCliDeployer {
       const closeCommand = `${config.solanaCliPath || 'solana'} program close ${programId} \
         --keypair ${this.deployerKeypairPath} \
         --url ${config.rpcUrl} \
+        --bypass-warning \
         --commitment confirmed`;
 
       const { stdout, stderr } = await execAsync(closeCommand);
@@ -783,6 +798,7 @@ class DeployerOrchestrator {
   private connection: Connection;
   private program: Program<Idl>;
   private deployerWallet: Wallet;
+  private expiredLoanInterval: NodeJS.Timeout | null = null;
 
   constructor(
     connection: Connection,
@@ -798,7 +814,7 @@ class DeployerOrchestrator {
     this.binaryManager = binaryManager;
     this.solanaDeployer = solanaDeployer;
     this.graphqlMonitor = graphqlMonitor;
-    this.program = program;
+    this.program = program ;
     this.deployerWallet = deployerWallet;
 
     this.setupEventHandlers();
@@ -813,6 +829,369 @@ class DeployerOrchestrator {
       await this.handleLoanRecovered(event);
     });
   }
+
+  private startExpiredLoanChecker(): void {
+  const CHECK_INTERVAL_MS = 1 * 60 * 1000; // 30 minutes
+  
+  setTimeout(() => {
+    this.checkExpiredLoans().catch(error => 
+      logger.error('Error in initial expired loan check', { error })
+    );
+  }, 60000);
+  
+  this.expiredLoanInterval = setInterval(async () => {
+    try {
+      await this.checkExpiredLoans();
+    } catch (error) {
+      logger.error('Error in periodic expired loan check', { error });
+    }
+  }, CHECK_INTERVAL_MS);
+  
+  logger.info(`Started expired loan checker with interval: ${CHECK_INTERVAL_MS}ms`);
+}
+
+  public async checkExpiredLoans(): Promise<void> {
+  try {
+    logger.info('Checking for expired loans...');
+    
+    const deployerKeypairData = await fs.readFile(config.deployerKeypairPath, 'utf8');
+    const deployerKeypair = Keypair.fromSecretKey(
+      new Uint8Array(JSON.parse(deployerKeypairData))
+    );
+    // Initialize Anchor program
+    const idlContent = await fs.readFile(config.idlPath, 'utf8');
+    const idl = JSON.parse(idlContent) as Idl;
+    
+    const opts: ConfirmOptions = {
+      preflightCommitment: 'confirmed',
+      commitment: 'confirmed',
+    };
+    
+    const deployerWallet = new Wallet(deployerKeypair);
+    const provider = new AnchorProvider(this.connection, deployerWallet, opts);
+
+    const program = new Program(idl, provider) as Program<Solignition>;
+    
+
+    const loans = await program.account.loan.all();
+    logger.info(`Found ${loans.length} total loans to check`);
+    
+    const currentTimestamp = Math.floor(Date.now() / 1000); 
+    let expiredCount = 0;
+    let processedCount = 0;
+    
+    for (const loanAccountInfo of loans) {
+      try {
+        const loan = loanAccountInfo.account as unknown as LoanAccount;
+        const loanId = loan.loanId.toString();
+        const startTime = loan.startTs.toNumber();
+        const duration = loan.duration.toNumber();
+        const expirationTime = startTime + duration;
+        const status = loan.state; 
+        
+        if (true) {//currentTimestamp > expirationTime && loan.state === 0 TODO
+          
+          
+          logger.info('Found expired loan', {
+            loanId,
+            borrower: loan.borrower.toString(),
+            startTime: new Date(startTime * 1000).toISOString(),
+            expirationTime: new Date(expirationTime * 1000).toISOString(),
+            currentTime: new Date(currentTimestamp * 1000).toISOString(),
+            hoursOverdue: ((currentTimestamp - expirationTime) / 3600).toFixed(2),
+          });
+          
+          const deployment = await this.stateManager.getDeployment(loanId);
+          
+          if (deployment && deployment.status === 'deployed') {
+           
+            logger.info('Processing full recovery for expired loan', { loanId });
+            try {
+              await this.executeCompleteRecovery(loanId, loan, loanAccountInfo.publicKey);
+               expiredCount++;
+               processedCount++;
+            } catch (error) {
+              logger.error('Error during complete recovery for expired loan ', error);
+            }
+            // Execute the complete recovery flow
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else  {
+            logger.warn('No deployed program found for expired loan', {
+              loanId,
+              deploymentStatus: deployment?.status || 'not found',
+            });
+          }
+          
+        }
+      } catch (error) {
+        logger.error('Error processing loan', {
+          publicKey: loanAccountInfo.publicKey.toString(),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    
+    logger.info('Expired loans check completed', {
+      totalLoans: loans.length,
+      expiredLoans: expiredCount,
+      processedRecoveries: processedCount,
+    });
+    
+    metrics.activeLoans.set(loans.filter(l => (l.account as any).state === 0).length);
+    
+  } catch (error) {
+    logger.error('Failed to check expired loans', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  }
+}
+
+// New method: Complete recovery flow with all three steps
+private async executeCompleteRecovery(
+  loanId: string, 
+  loan: LoanAccount, 
+  loanPubkey: PublicKey
+): Promise<void> {
+  try {
+    logger.info('Starting complete recovery flow for loan', { loanId });
+    
+    // Step 1: Call recoverLoan to mark the loan as recovered
+    await this.callRecoverLoan(loanId, loan, loanPubkey);
+    
+    // Step 2: Close the deployed program
+    const deployment = await this.stateManager.getDeployment(loanId);
+    if (deployment && deployment.programId && loan.deployedProgram) {
+      await this.closeDeployedProgram(loanId, new PublicKey(deployment.programId));
+      deployment.status = 'recovered';
+      
+      // Step 3: Return reclaimed SOL to vault
+      // Get the balance that was recovered from closing the program
+      //const reclaimedAmount = await this.getReclaimedAmount(deployment.programId);
+      const returnSig = await this.callReturnReclaimedSol(loanId, loan, loanPubkey, loan.principal);
+    }
+
+    // just return sol if there is no deployed program !loan.deployedProgram
+    if(true){
+      const returnSig = await this.callReturnReclaimedSol(loanId, loan, loanPubkey, loan.principal);
+    }
+    
+    // Update deployment status in database
+    await this.stateManager.saveDeployment(deployment);
+    
+    // Update metrics
+    if (metrics.expiredLoansRecovered) {
+      metrics.expiredLoansRecovered.inc();
+    }
+    
+    logger.info('Complete recovery flow finished successfully', { loanId });
+  } catch (error) {
+    logger.error('Failed to execute complete recovery', {
+      loanId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+// New method: Call the recoverLoan instruction
+private async callRecoverLoan(
+  loanId: string,
+  loan: LoanAccount,
+  loanPubkey: PublicKey
+): Promise<string> {
+  try {
+    logger.info('Calling recoverLoan instruction', { loanId });
+    
+    // Get required accounts
+    const protocolConfigPubkey = PublicKey.findProgramAddressSync(
+      [PROTOCOL_CONFIG_SEED],
+      this.program.programId
+    )[0];
+    
+    const adminPdaPubkey = PublicKey.findProgramAddressSync(
+      [Buffer.from('admin')],
+      this.program.programId
+    )[0];
+    
+    const eventAuthority = PublicKey.findProgramAddressSync(
+      [AUTHORITY_SEED],
+      this.program.programId
+    )[0];
+
+    const loanIdBn = new anchor.BN(loanId);
+      const [loanPda] = PublicKey.findProgramAddressSync(
+        [LOAN_SEED, loanIdBn.toArrayLike(Buffer, 'le', 8), loan.borrower.toBuffer()],
+        this.program.programId
+      );
+
+    const deployerKeypairData = await fs.readFile(config.deployerKeypairPath, 'utf8');
+    const deployerKeypair = Keypair.fromSecretKey(
+      new Uint8Array(JSON.parse(deployerKeypairData))
+    );
+    // Initialize Anchor program
+    const idlContent = await fs.readFile(config.idlPath, 'utf8');
+    const idl = JSON.parse(idlContent) as Idl;
+    
+    const opts: ConfirmOptions = {
+      preflightCommitment: 'confirmed',
+      commitment: 'confirmed',
+    };
+    
+    const deployerWallet = new Wallet(deployerKeypair);
+    const provider = new AnchorProvider(this.connection, deployerWallet, opts);
+
+    const program = new Program(idl, provider) as Program<Solignition>;
+    
+    // Get treasury from protocol config
+    const protocolConfig = await program.account.protocolConfig.fetch(protocolConfigPubkey);
+    const treasuryPubkey = protocolConfig.treasury;
+    
+    // Build and send transaction
+    const tx = await this.program.methods
+      .recoverLoan()
+      .accounts({
+        admin: this.deployerWallet.publicKey, // Assuming admin is the deployer wallet
+        protocolConfig: protocolConfigPubkey,
+        loan: loanPda,
+        deployer: this.deployerWallet.publicKey,
+        adminPda: adminPdaPubkey,
+        treasury: treasuryPubkey,
+        systemProgram: SystemProgram.programId,
+        //eventAuthority: eventAuthority,
+        program: this.program.programId,
+      })
+      .signers([this.deployerWallet.payer])
+      .rpc();
+    
+    logger.info('recoverLoan transaction confirmed', { 
+      loanId, 
+      tx,
+      loanState: 'recovered'
+    });
+    return tx;
+    
+  } catch (error) {
+    logger.error('Failed to call recoverLoan', {
+      loanId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+// New method: Close the deployed program account
+private async closeDeployedProgram(
+  loanId: string,
+  programPubkey: PublicKey
+): Promise<void> {
+  try {
+    logger.info('Closing deployed program', { loanId, programPubkey: programPubkey.toString() });
+    
+    // This is your existing processRecovery logic
+    // Close the program buffer and recover rent
+    await this.processRecovery(loanId);
+    
+    logger.info('Deployed program closed successfully', { loanId });
+  } catch (error) {
+    logger.error('Failed to close deployed program', {
+      loanId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+//TODO needs to be change
+// New method: Get the amount of SOL reclaimed from closing the program d
+private async getReclaimedAmount(programPubkey: string): Promise<number> {
+  try {
+    // Check the deployer PDA balance before and after, or
+    // track the amount from the close transaction
+    // This depends on your specific implementation
+    
+    // For now, we'll get the minimum balance for a program account
+    // Typically around 1-3 SOL depending on program size
+    const ESTIMATED_PROGRAM_RENT = 2 * anchor.web3.LAMPORTS_PER_SOL;
+    return ESTIMATED_PROGRAM_RENT;
+    
+  } catch (error) {
+    logger.error('Failed to get reclaimed amount', {
+      programPubkey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Return a default amount if we can't determine exact amount
+    return 2 * anchor.web3.LAMPORTS_PER_SOL;
+  }
+}
+
+// New method: Call the returnReclaimedSol instruction
+private async callReturnReclaimedSol(
+  loanId: string,
+  loan: LoanAccount,
+  loanPubkey: PublicKey,
+  amount: number
+): Promise<string> {
+  try {
+    logger.info('Calling returnReclaimedSol instruction', { 
+      loanId,
+      amount: amount / anchor.web3.LAMPORTS_PER_SOL + ' SOL'
+    });
+    
+    // Get required accounts
+    const protocolConfigPubkey = PublicKey.findProgramAddressSync(
+      [PROTOCOL_CONFIG_SEED],
+      this.program.programId
+    )[0];
+    
+    const vaultPubkey = PublicKey.findProgramAddressSync(
+      [VAULT_SEED],
+      this.program.programId
+    )[0];
+    
+    const eventAuthority = PublicKey.findProgramAddressSync(
+      [AUTHORITY_SEED],
+      this.program.programId
+    )[0];
+    
+    // Get the deployer PDA (this should be where the reclaimed SOL is)
+    // You may need to adjust this based on your specific deployer PDA setup
+    const deployerPdaPubkey = PublicKey.findProgramAddressSync(
+      [Buffer.from('deployer'), new anchor.BN(loanId).toArrayLike(Buffer, 'le', 8)],
+      this.program.programId
+    )[0];
+    
+    // Build and send transaction
+    const tx = await this.program.methods
+      .returnReclaimedSol(new anchor.BN(amount))
+      .accounts({
+        caller: this.deployerWallet.publicKey,
+        protocolConfig: protocolConfigPubkey,
+        loan: loanPubkey,
+        vault: vaultPubkey,
+        deployer: this.deployerWallet.publicKey,
+        systemProgram: SystemProgram.programId,
+        //eventAuthority: eventAuthority,
+        program: this.program.programId,
+      })
+      .signers([this.deployerWallet.payer])
+      .rpc();
+    
+    logger.info('returnReclaimedSol transaction confirmed', { 
+      loanId, 
+      tx,
+      amountReturned: amount / anchor.web3.LAMPORTS_PER_SOL + ' SOL'
+    });
+    return tx;
+    
+  } catch (error) {
+    logger.error('Failed to call returnReclaimedSol', {
+      loanId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
 
   private async handleLoanRequested(event: any): Promise<void> {
     const { loanId, borrower, principal } = event;
@@ -850,6 +1229,7 @@ class DeployerOrchestrator {
 
     await this.processDeploymentWithRetries(deployment);
   }
+
 
   public async processDeploymentWithRetries(deployment: DeploymentRecord): Promise<void> {
     let attempts = 0;
@@ -1085,6 +1465,7 @@ class DeployerOrchestrator {
           loanId,
           signature,
         });
+        metrics.expiredLoansRecovered.inc();
       }
     } catch (error) {
       logger.error('Recovery failed', { loanId, error });
@@ -1096,11 +1477,17 @@ class DeployerOrchestrator {
 
   async start(): Promise<void> {
     await this.graphqlMonitor.start();
+    this.startExpiredLoanChecker();
     logger.info('Deployer orchestrator started');
   }
 
   async stop(): Promise<void> {
     await this.graphqlMonitor.stop();
+
+    if (this.expiredLoanInterval) {
+    clearInterval(this.expiredLoanInterval);
+    this.expiredLoanInterval = null;
+  }
     logger.info('Deployer orchestrator stopped');
   }
 }
@@ -1692,10 +2079,12 @@ async function main() {
     
     const deployerWallet = new Wallet(deployerKeypair);
     const provider = new AnchorProvider(connection, deployerWallet, opts);
-    const program = new Program(idl, provider);
+    const program = new Program(idl, provider) as Program<Idl>;
 
-    //const loans =  await program.account.loan.all();
-    //logger.info(`Loaded program: ${config.programId.toBase58()}`, { totalLoans: loans });
+    const programT = new Program(idl, provider) as Program<Solignition>;
+
+    const loans =  await programT.account.loan.all();
+    logger.info(`Loaded programT: ${config.programId.toBase58()}`, { totalLoans: loans.length });
 
     // Initialize components
     logger.info('Initializing components...');

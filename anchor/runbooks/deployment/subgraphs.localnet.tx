@@ -7,14 +7,6 @@ action "solignition_protocol_initialized" "svm::deploy_subgraph" {
     }
 }
 
-action "solignition_authority_reclaimed" "svm::deploy_subgraph" {
-    program_id = action.deploy_solignition.program_id
-    program_idl = action.deploy_solignition.program_idl
-    slot = action.deploy_solignition.slot
-    event {
-        name = "AuthorityReclaimed"
-    }
-}
 
 action "solignition_authority_transferred" "svm::deploy_subgraph" {
     program_id = action.deploy_solignition.program_id
