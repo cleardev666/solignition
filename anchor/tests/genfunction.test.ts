@@ -448,7 +448,7 @@ describe("solignition", () => {
       setTimeout( async () => {
         const config0 = await program.account.protocolConfig.fetch(protocolConfigPda);
       [loanPda] = PublicKey.findProgramAddressSync(
-        [LOAN_SEED, new anchor.BN(config0.loanCounter).toArrayLike(Buffer, "le", 8)],
+        [LOAN_SEED, new anchor.BN(config0.loanCounter).toArrayLike(Buffer, "le", 8), borrower.publicKey.toBuffer()],
         program.programId
       );
       
@@ -472,7 +472,7 @@ describe("solignition", () => {
           loan: loanPda,
           protocolConfig: protocolConfigPda,
           vault: vaultPda,
-          authorityPda: authorityPda,
+          //authorityPda: authorityPda,
           adminPda: adminPda,
           deployer: deployer.publicKey,
           //systemProgram: SystemProgram.programId,

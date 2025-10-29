@@ -113,11 +113,12 @@ interface LoanAccount {
   borrower: PublicKey;
   principal: anchor.BN;
   deployedProgram: PublicKey | null;
-  state: number; // 0: Active, 1: Repaid, 2: Recovered, 3: Defaulted
+  state: number; // 0: Active, 1: Repaid, 2: Recovered, 4:pending 5:RepaidPendingTransfer
   startTs: anchor.BN;
   duration: anchor.BN;
   interestRateBps: number;
   adminFeeBps: number;
+  reclaimedAmount: anchor.BN;
 }
 
 interface LoanRequestedData {
@@ -887,10 +888,20 @@ class DeployerOrchestrator {
         const startTime = loan.startTs.toNumber();
         const duration = loan.duration.toNumber();
         const expirationTime = startTime + duration;
-        const status = loan.state; 
+        const reclaimed = loan.reclaimedAmount.toNumber();
         
-        if (true) {//currentTimestamp > expirationTime && loan.state === 0 TODO
-          
+
+        const stateKey = Object.keys(loan.state ?? {})[0] ?? 'unknown';
+        const isActiveOrPending = ['active', 'pending'].includes(stateKey);
+        const isRecovered = ['recovered'].includes(stateKey);
+        logger.info(`loan is ${stateKey}`);
+        logger.info(`reclaim is ${reclaimed}`);
+
+
+        
+         //logger.info('loan object ', loan);
+      if(reclaimed == 0 || !isRecovered){ //when 0 returnSol has not been called yet
+        if (isActiveOrPending) {//currentTimestamp > expirationTime && loan.state === 0 TODO(status === 'Active' || status === 'Pending')
           
           logger.info('Found expired loan', {
             loanId,
@@ -924,6 +935,7 @@ class DeployerOrchestrator {
           }
           
         }
+      }
       } catch (error) {
         logger.error('Error processing loan', {
           publicKey: loanAccountInfo.publicKey.toString(),
@@ -956,34 +968,34 @@ private async executeCompleteRecovery(
 ): Promise<void> {
   try {
     logger.info('Starting complete recovery flow for loan', { loanId });
-    
+    const stateKey = Object.keys(loan.state ?? {})[0] ?? 'unknown';
+    const isActiveOrPending = ['active', 'pending'].includes(stateKey);
+    const isActive =  ['active'].includes(stateKey);
+
     // Step 1: Call recoverLoan to mark the loan as recovered
+    if(isActiveOrPending){
     await this.callRecoverLoan(loanId, loan, loanPubkey);
+    }
     
     // Step 2: Close the deployed program
     const deployment = await this.stateManager.getDeployment(loanId);
     if (deployment && deployment.programId && loan.deployedProgram) {
+      if(isActive && deployment.status != 'recovered'){//only close active loans that have expired
       await this.closeDeployedProgram(loanId, new PublicKey(deployment.programId));
-      deployment.status = 'recovered';
-      
+      }
       // Step 3: Return reclaimed SOL to vault
       // Get the balance that was recovered from closing the program
       //const reclaimedAmount = await this.getReclaimedAmount(deployment.programId);
-      const returnSig = await this.callReturnReclaimedSol(loanId, loan, loanPubkey, loan.principal);
+      //const returnSig = await this.callReturnReclaimedSol(loanId, loan, loanPubkey, loan.principal);
     }
 
-    // just return sol if there is no deployed program !loan.deployedProgram
-    if(true){
+    // just return sol if there is no deployed program
+    if(loan.reclaimedAmount.toNumber() == 0 ){
       const returnSig = await this.callReturnReclaimedSol(loanId, loan, loanPubkey, loan.principal);
     }
     
     // Update deployment status in database
     await this.stateManager.saveDeployment(deployment);
-    
-    // Update metrics
-    if (metrics.expiredLoansRecovered) {
-      metrics.expiredLoansRecovered.inc();
-    }
     
     logger.info('Complete recovery flow finished successfully', { loanId });
   } catch (error) {
@@ -1593,6 +1605,31 @@ class ApiServer {
     this.app.get('/metrics', async (req, res) => {
       res.set('Content-Type', registry.contentType);
       res.end(await registry.metrics());
+    });
+
+    this.app.post('/check-expired-loans', async (req, res) => {
+  try {
+    if (!this.orchestrator) {
+      return res.status(500).json({ error: 'Orchestrator not initialized' });
+    }
+    
+    logger.info('Manual expired loan check triggered via API');
+    
+    // Run the check asynchronously
+    this.orchestrator.checkExpiredLoans()
+      .then(() => logger.info('Manual expired loan check completed'))
+      .catch(error => logger.error('Manual expired loan check failed', { error }));
+    
+    res.json({
+      success: true,
+      message: 'Expired loan check initiated with full recovery flow',
+    });
+  } catch (error) {
+    logger.error('Error triggering expired loan check', { error });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Internal server error' 
+    });
+  }
     });
 
     this.app.post('/notify-repaid', async (req, res) => {
