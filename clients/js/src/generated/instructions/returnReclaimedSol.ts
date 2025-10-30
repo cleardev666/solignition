@@ -32,6 +32,7 @@ import {
   type ReadonlyUint8Array,
   type TransactionSigner,
   type WritableAccount,
+  type WritableSignerAccount,
 } from '@solana/kit';
 import { SOLIGNITION_PROGRAM_ADDRESS } from '../programs';
 import { getAccountMetaFactory, type ResolvedAccount } from '../shared';
@@ -52,7 +53,7 @@ export type ReturnReclaimedSolInstruction<
   TAccountProtocolConfig extends string | AccountMeta<string> = string,
   TAccountLoan extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
-  TAccountDeployerPda extends string | AccountMeta<string> = string,
+  TAccountDeployer extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends
     | string
     | AccountMeta<string> = '11111111111111111111111111111111',
@@ -76,9 +77,10 @@ export type ReturnReclaimedSolInstruction<
       TAccountVault extends string
         ? WritableAccount<TAccountVault>
         : TAccountVault,
-      TAccountDeployerPda extends string
-        ? WritableAccount<TAccountDeployerPda>
-        : TAccountDeployerPda,
+      TAccountDeployer extends string
+        ? WritableSignerAccount<TAccountDeployer> &
+            AccountSignerMeta<TAccountDeployer>
+        : TAccountDeployer,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -131,7 +133,7 @@ export type ReturnReclaimedSolAsyncInput<
   TAccountProtocolConfig extends string = string,
   TAccountLoan extends string = string,
   TAccountVault extends string = string,
-  TAccountDeployerPda extends string = string,
+  TAccountDeployer extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
   TAccountProgram extends string = string,
@@ -140,7 +142,7 @@ export type ReturnReclaimedSolAsyncInput<
   protocolConfig?: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
   vault?: Address<TAccountVault>;
-  deployerPda: Address<TAccountDeployerPda>;
+  deployer: TransactionSigner<TAccountDeployer>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority?: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -152,7 +154,7 @@ export async function getReturnReclaimedSolInstructionAsync<
   TAccountProtocolConfig extends string,
   TAccountLoan extends string,
   TAccountVault extends string,
-  TAccountDeployerPda extends string,
+  TAccountDeployer extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
   TAccountProgram extends string,
@@ -163,7 +165,7 @@ export async function getReturnReclaimedSolInstructionAsync<
     TAccountProtocolConfig,
     TAccountLoan,
     TAccountVault,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -176,7 +178,7 @@ export async function getReturnReclaimedSolInstructionAsync<
     TAccountProtocolConfig,
     TAccountLoan,
     TAccountVault,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -191,7 +193,7 @@ export async function getReturnReclaimedSolInstructionAsync<
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: false },
     loan: { value: input.loan ?? null, isWritable: true },
     vault: { value: input.vault ?? null, isWritable: true },
-    deployerPda: { value: input.deployerPda ?? null, isWritable: true },
+    deployer: { value: input.deployer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     program: { value: input.program ?? null, isWritable: false },
@@ -246,7 +248,7 @@ export async function getReturnReclaimedSolInstructionAsync<
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.loan),
       getAccountMeta(accounts.vault),
-      getAccountMeta(accounts.deployerPda),
+      getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.systemProgram),
       getAccountMeta(accounts.eventAuthority),
       getAccountMeta(accounts.program),
@@ -261,7 +263,7 @@ export async function getReturnReclaimedSolInstructionAsync<
     TAccountProtocolConfig,
     TAccountLoan,
     TAccountVault,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -273,7 +275,7 @@ export type ReturnReclaimedSolInput<
   TAccountProtocolConfig extends string = string,
   TAccountLoan extends string = string,
   TAccountVault extends string = string,
-  TAccountDeployerPda extends string = string,
+  TAccountDeployer extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
   TAccountProgram extends string = string,
@@ -282,7 +284,7 @@ export type ReturnReclaimedSolInput<
   protocolConfig: Address<TAccountProtocolConfig>;
   loan: Address<TAccountLoan>;
   vault: Address<TAccountVault>;
-  deployerPda: Address<TAccountDeployerPda>;
+  deployer: TransactionSigner<TAccountDeployer>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -294,7 +296,7 @@ export function getReturnReclaimedSolInstruction<
   TAccountProtocolConfig extends string,
   TAccountLoan extends string,
   TAccountVault extends string,
-  TAccountDeployerPda extends string,
+  TAccountDeployer extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
   TAccountProgram extends string,
@@ -305,7 +307,7 @@ export function getReturnReclaimedSolInstruction<
     TAccountProtocolConfig,
     TAccountLoan,
     TAccountVault,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -317,7 +319,7 @@ export function getReturnReclaimedSolInstruction<
   TAccountProtocolConfig,
   TAccountLoan,
   TAccountVault,
-  TAccountDeployerPda,
+  TAccountDeployer,
   TAccountSystemProgram,
   TAccountEventAuthority,
   TAccountProgram
@@ -331,7 +333,7 @@ export function getReturnReclaimedSolInstruction<
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: false },
     loan: { value: input.loan ?? null, isWritable: true },
     vault: { value: input.vault ?? null, isWritable: true },
-    deployerPda: { value: input.deployerPda ?? null, isWritable: true },
+    deployer: { value: input.deployer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     program: { value: input.program ?? null, isWritable: false },
@@ -357,7 +359,7 @@ export function getReturnReclaimedSolInstruction<
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.loan),
       getAccountMeta(accounts.vault),
-      getAccountMeta(accounts.deployerPda),
+      getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.systemProgram),
       getAccountMeta(accounts.eventAuthority),
       getAccountMeta(accounts.program),
@@ -372,7 +374,7 @@ export function getReturnReclaimedSolInstruction<
     TAccountProtocolConfig,
     TAccountLoan,
     TAccountVault,
-    TAccountDeployerPda,
+    TAccountDeployer,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -389,7 +391,7 @@ export type ParsedReturnReclaimedSolInstruction<
     protocolConfig: TAccountMetas[1];
     loan: TAccountMetas[2];
     vault: TAccountMetas[3];
-    deployerPda: TAccountMetas[4];
+    deployer: TAccountMetas[4];
     systemProgram: TAccountMetas[5];
     eventAuthority: TAccountMetas[6];
     program: TAccountMetas[7];
@@ -422,7 +424,7 @@ export function parseReturnReclaimedSolInstruction<
       protocolConfig: getNextAccount(),
       loan: getNextAccount(),
       vault: getNextAccount(),
-      deployerPda: getNextAccount(),
+      deployer: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

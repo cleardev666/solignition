@@ -56,7 +56,6 @@ export type RequestLoanInstruction<
   TAccountLoan extends string | AccountMeta<string> = string,
   TAccountProtocolConfig extends string | AccountMeta<string> = string,
   TAccountVault extends string | AccountMeta<string> = string,
-  TAccountAuthorityPda extends string | AccountMeta<string> = string,
   TAccountAdminPda extends string | AccountMeta<string> = string,
   TAccountDeployer extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends
@@ -82,9 +81,6 @@ export type RequestLoanInstruction<
       TAccountVault extends string
         ? WritableAccount<TAccountVault>
         : TAccountVault,
-      TAccountAuthorityPda extends string
-        ? ReadonlyAccount<TAccountAuthorityPda>
-        : TAccountAuthorityPda,
       TAccountAdminPda extends string
         ? WritableAccount<TAccountAdminPda>
         : TAccountAdminPda,
@@ -157,7 +153,6 @@ export type RequestLoanAsyncInput<
   TAccountLoan extends string = string,
   TAccountProtocolConfig extends string = string,
   TAccountVault extends string = string,
-  TAccountAuthorityPda extends string = string,
   TAccountAdminPda extends string = string,
   TAccountDeployer extends string = string,
   TAccountSystemProgram extends string = string,
@@ -168,7 +163,6 @@ export type RequestLoanAsyncInput<
   loan: Address<TAccountLoan>;
   protocolConfig?: Address<TAccountProtocolConfig>;
   vault?: Address<TAccountVault>;
-  authorityPda?: Address<TAccountAuthorityPda>;
   adminPda?: Address<TAccountAdminPda>;
   deployer: Address<TAccountDeployer>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -185,7 +179,6 @@ export async function getRequestLoanInstructionAsync<
   TAccountLoan extends string,
   TAccountProtocolConfig extends string,
   TAccountVault extends string,
-  TAccountAuthorityPda extends string,
   TAccountAdminPda extends string,
   TAccountDeployer extends string,
   TAccountSystemProgram extends string,
@@ -198,7 +191,6 @@ export async function getRequestLoanInstructionAsync<
     TAccountLoan,
     TAccountProtocolConfig,
     TAccountVault,
-    TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployer,
     TAccountSystemProgram,
@@ -213,7 +205,6 @@ export async function getRequestLoanInstructionAsync<
     TAccountLoan,
     TAccountProtocolConfig,
     TAccountVault,
-    TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployer,
     TAccountSystemProgram,
@@ -230,7 +221,6 @@ export async function getRequestLoanInstructionAsync<
     loan: { value: input.loan ?? null, isWritable: true },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
     vault: { value: input.vault ?? null, isWritable: true },
-    authorityPda: { value: input.authorityPda ?? null, isWritable: false },
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     deployer: { value: input.deployer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
@@ -259,16 +249,6 @@ export async function getRequestLoanInstructionAsync<
       programAddress,
       seeds: [
         getBytesEncoder().encode(new Uint8Array([118, 97, 117, 108, 116])),
-      ],
-    });
-  }
-  if (!accounts.authorityPda.value) {
-    accounts.authorityPda.value = await getProgramDerivedAddress({
-      programAddress,
-      seeds: [
-        getBytesEncoder().encode(
-          new Uint8Array([97, 117, 116, 104, 111, 114, 105, 116, 121])
-        ),
       ],
     });
   }
@@ -305,7 +285,6 @@ export async function getRequestLoanInstructionAsync<
       getAccountMeta(accounts.loan),
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.vault),
-      getAccountMeta(accounts.authorityPda),
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.systemProgram),
@@ -322,7 +301,6 @@ export async function getRequestLoanInstructionAsync<
     TAccountLoan,
     TAccountProtocolConfig,
     TAccountVault,
-    TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployer,
     TAccountSystemProgram,
@@ -336,7 +314,6 @@ export type RequestLoanInput<
   TAccountLoan extends string = string,
   TAccountProtocolConfig extends string = string,
   TAccountVault extends string = string,
-  TAccountAuthorityPda extends string = string,
   TAccountAdminPda extends string = string,
   TAccountDeployer extends string = string,
   TAccountSystemProgram extends string = string,
@@ -347,7 +324,6 @@ export type RequestLoanInput<
   loan: Address<TAccountLoan>;
   protocolConfig: Address<TAccountProtocolConfig>;
   vault: Address<TAccountVault>;
-  authorityPda: Address<TAccountAuthorityPda>;
   adminPda: Address<TAccountAdminPda>;
   deployer: Address<TAccountDeployer>;
   systemProgram?: Address<TAccountSystemProgram>;
@@ -364,7 +340,6 @@ export function getRequestLoanInstruction<
   TAccountLoan extends string,
   TAccountProtocolConfig extends string,
   TAccountVault extends string,
-  TAccountAuthorityPda extends string,
   TAccountAdminPda extends string,
   TAccountDeployer extends string,
   TAccountSystemProgram extends string,
@@ -377,7 +352,6 @@ export function getRequestLoanInstruction<
     TAccountLoan,
     TAccountProtocolConfig,
     TAccountVault,
-    TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployer,
     TAccountSystemProgram,
@@ -391,7 +365,6 @@ export function getRequestLoanInstruction<
   TAccountLoan,
   TAccountProtocolConfig,
   TAccountVault,
-  TAccountAuthorityPda,
   TAccountAdminPda,
   TAccountDeployer,
   TAccountSystemProgram,
@@ -407,7 +380,6 @@ export function getRequestLoanInstruction<
     loan: { value: input.loan ?? null, isWritable: true },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: true },
     vault: { value: input.vault ?? null, isWritable: true },
-    authorityPda: { value: input.authorityPda ?? null, isWritable: false },
     adminPda: { value: input.adminPda ?? null, isWritable: true },
     deployer: { value: input.deployer ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
@@ -435,7 +407,6 @@ export function getRequestLoanInstruction<
       getAccountMeta(accounts.loan),
       getAccountMeta(accounts.protocolConfig),
       getAccountMeta(accounts.vault),
-      getAccountMeta(accounts.authorityPda),
       getAccountMeta(accounts.adminPda),
       getAccountMeta(accounts.deployer),
       getAccountMeta(accounts.systemProgram),
@@ -452,7 +423,6 @@ export function getRequestLoanInstruction<
     TAccountLoan,
     TAccountProtocolConfig,
     TAccountVault,
-    TAccountAuthorityPda,
     TAccountAdminPda,
     TAccountDeployer,
     TAccountSystemProgram,
@@ -471,12 +441,11 @@ export type ParsedRequestLoanInstruction<
     loan: TAccountMetas[1];
     protocolConfig: TAccountMetas[2];
     vault: TAccountMetas[3];
-    authorityPda: TAccountMetas[4];
-    adminPda: TAccountMetas[5];
-    deployer: TAccountMetas[6];
-    systemProgram: TAccountMetas[7];
-    eventAuthority: TAccountMetas[8];
-    program: TAccountMetas[9];
+    adminPda: TAccountMetas[4];
+    deployer: TAccountMetas[5];
+    systemProgram: TAccountMetas[6];
+    eventAuthority: TAccountMetas[7];
+    program: TAccountMetas[8];
   };
   data: RequestLoanInstructionData;
 };
@@ -489,7 +458,7 @@ export function parseRequestLoanInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedRequestLoanInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 10) {
+  if (instruction.accounts.length < 9) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -506,7 +475,6 @@ export function parseRequestLoanInstruction<
       loan: getNextAccount(),
       protocolConfig: getNextAccount(),
       vault: getNextAccount(),
-      authorityPda: getNextAccount(),
       adminPda: getNextAccount(),
       deployer: getNextAccount(),
       systemProgram: getNextAccount(),

@@ -126,21 +126,6 @@ pub mod solignition {
         // Transfer SOL from vault to depositor
         let vault_seeds = &[VAULT_SEED, &[ctx.bumps.vault]];
         let signer = &[&vault_seeds[..]];
-        
-       // **ctx.accounts.vault.try_borrow_mut_lamports()? -= amount;
-       // **ctx.accounts.depositor.try_borrow_mut_lamports()? += amount;
-
-        /* Transfer tokens from user to escrow token account
-        let cpi_accounts = Transfer {
-            from: ctx.accounts.vault.to_account_info(),
-            to: ctx.accounts.depositor.to_account_info(),
-            authority: ctx.accounts.vault.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
-            cpi_accounts
-        );
-        token::transfer(cpi_ctx, amount)?;*/
 
         let ix = system_instruction::transfer(
         &ctx.accounts.vault.key(),
@@ -227,9 +212,6 @@ pub mod solignition {
         // Any unused or reclaimed SOL can be returned via return_reclaimed_sol
         let vault_seeds = &[VAULT_SEED, &[ctx.bumps.vault]];
         let signer = &[&vault_seeds[..]];
-        
-        //**ctx.accounts.vault.try_borrow_mut_lamports()? -= principal;
-        //**ctx.accounts.deployer_pda.try_borrow_mut_lamports()? += principal;
 
         let ix = system_instruction::transfer(
         &ctx.accounts.vault.key(),
@@ -258,7 +240,6 @@ pub mod solignition {
         loan.admin_fee_paid = admin_fee;
         loan.start_ts = Clock::get()?.unix_timestamp;
         loan.state = LoanState::Pending;
-       // loan.authority_pda = ctx.accounts.authority_pda.key();
         loan.repaid_ts = Some(0);
         loan.recovered_ts = Some(0);
         loan.interest_paid = Some(0);
@@ -418,7 +399,7 @@ pub fn transfer_authority_to_borrower(
         // Note: The protocol maintains upgrade authority of the expired program
         // The off-chain deployer can close the program account and return SOL via return_reclaimed_sol
         
-        // Principal is already gone (used for deployment)
+        // Principal is already gone (used for deployment if deployed)
         // Admin fee was already collected upfront
         
         // Split admin fee between depositors and treasury based on config
@@ -435,9 +416,6 @@ pub fn transfer_authority_to_borrower(
             let admin_seeds = &[ADMIN_SEED, &[ctx.bumps.admin_pda]];
             let signer = &[&admin_seeds[..]];
             
-          //  **ctx.accounts.admin_pda.try_borrow_mut_lamports()? -= treasury_share;
-          //  **ctx.accounts.treasury.try_borrow_mut_lamports()? += treasury_share;
-
             let ix = system_instruction::transfer(
             &ctx.accounts.admin_pda.key(),
             &ctx.accounts.treasury.key(),
@@ -487,27 +465,7 @@ pub fn transfer_authority_to_borrower(
         
         Ok(())
     }
-/* 
-    /// Reclaim program authority for recovered loans (enables closing program accounts)
-    pub fn reclaim_program_authority(ctx: Context<ReclaimProgramAuthority>) -> Result<()> {
-        let loan = &ctx.accounts.loan;
-        
-        // Ensure loan has been recovered
-        require!(loan.state == LoanState::Recovered, ErrorCode::LoanNotRecovered);
-        require!(loan.program_pubkey != Pubkey::default(), ErrorCode::InvalidProgram);
-        
-        // The protocol already holds the authority (it was never transferred in recovery)
-        // This instruction is for explicit actions like closing the program account
-        
-        emit_cpi!(AuthorityReclaimed {
-            loan_id: loan.loan_id,
-            program_pubkey: loan.program_pubkey,
-            authority: ctx.accounts.authority_pda.key(),
-        });
-        
-        Ok(())
-    }
-*/
+
     /// Return reclaimed SOL from expired/recovered loans back to vault
     pub fn return_reclaimed_sol(ctx: Context<ReturnReclaimedSol>, amount: u64) -> Result<()> {
         let loan = &ctx.accounts.loan;
@@ -641,7 +599,7 @@ pub struct Initialize<'info> {
         bump
     )]
     pub vault: AccountInfo<'info>,
-    
+    /* */
     /// CHECK: Authority PDA for program upgrade authority
     #[account(
         seeds = [AUTHORITY_SEED],
@@ -764,14 +722,7 @@ pub struct RequestLoan<'info> {
         bump
     )]
     pub vault: AccountInfo<'info>,
-    /** 
-    /// CHECK: Authority PDA for program control
-    #[account(
-        seeds = [AUTHORITY_SEED],
-        bump
-    )]
-    pub authority_pda: AccountInfo<'info>,
-    */
+    
     /// CHECK: Admin fee collection PDA
     #[account(
         mut,
@@ -924,34 +875,7 @@ pub struct RecoverLoan<'info> {
     
     pub system_program: Program<'info, System>,
 }
-/** 
-#[event_cpi]
-#[derive(Accounts)]
-pub struct ReclaimProgramAuthority<'info> {
-    pub admin: Signer<'info>,
-    
-    #[account(
-        seeds = [PROTOCOL_CONFIG_SEED],
-        has_one = admin @ ErrorCode::Unauthorized,
-        bump = protocol_config.bump
-    )]
-    pub protocol_config: Account<'info, ProtocolConfig>,
-    
-    #[account(
-        constraint = loan.state == LoanState::Recovered @ ErrorCode::LoanNotRecovered,
-        seeds = [LOAN_SEED, protocol_config.loan_counter.to_le_bytes().as_ref(), &loan.borrower.to_bytes()],
-        bump = loan.bump
-    )]
-    pub loan: Account<'info, Loan>,
-    
-    /// CHECK: Authority PDA that controls the program
-    #[account(
-        seeds = [AUTHORITY_SEED],
-        bump
-    )]
-    pub authority_pda: AccountInfo<'info>,
-}
-*/
+
 #[event_cpi]
 #[derive(Accounts)]
 pub struct ReturnReclaimedSol<'info> {
@@ -1128,14 +1052,7 @@ pub struct AuthorityTransferred {
     pub program_pubkey: Pubkey,
     pub new_authority: Pubkey,
 }
-/* 
-#[event]
-pub struct AuthorityReclaimed {
-    pub loan_id: u64,
-    pub program_pubkey: Pubkey,
-    pub authority: Pubkey,
-}
-*/
+
 #[event]
 pub struct SolReclaimed {
     pub loan_id: u64,

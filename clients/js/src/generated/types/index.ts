@@ -6,7 +6,6 @@
  * @see https://github.com/codama-idl/codama
  */
 
-export * from './authorityReclaimed';
 export * from './authorityTransferred';
 export * from './configUpdated';
 export * from './deposited';

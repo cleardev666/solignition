@@ -1,4 +1,4 @@
-import {
+/*import {
   Blockhash,
   createSolanaClient,
   createTransaction,
@@ -142,3 +142,4 @@ async function sendAndConfirm({ ix, payer }: { ix: Instruction; payer: KeyPairSi
   const signedTransaction = await signTransactionMessageWithSigners(tx)
   return await sendAndConfirmTransaction(signedTransaction)
 }
+ */

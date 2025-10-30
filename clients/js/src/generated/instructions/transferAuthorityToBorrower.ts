@@ -53,6 +53,9 @@ export type TransferAuthorityToBorrowerInstruction<
   TAccountLoan extends string | AccountMeta<string> = string,
   TAccountBorrower extends string | AccountMeta<string> = string,
   TAccountProgramData extends string | AccountMeta<string> = string,
+  TAccountBpfUpgradeableLoader extends
+    | string
+    | AccountMeta<string> = 'BPFLoaderUpgradeab1e11111111111111111111111',
   TAccountSystemProgram extends
     | string
     | AccountMeta<string> = '11111111111111111111111111111111',
@@ -74,11 +77,14 @@ export type TransferAuthorityToBorrowerInstruction<
         ? WritableAccount<TAccountLoan>
         : TAccountLoan,
       TAccountBorrower extends string
-        ? ReadonlyAccount<TAccountBorrower>
+        ? WritableAccount<TAccountBorrower>
         : TAccountBorrower,
       TAccountProgramData extends string
-        ? ReadonlyAccount<TAccountProgramData>
+        ? WritableAccount<TAccountProgramData>
         : TAccountProgramData,
+      TAccountBpfUpgradeableLoader extends string
+        ? ReadonlyAccount<TAccountBpfUpgradeableLoader>
+        : TAccountBpfUpgradeableLoader,
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
@@ -137,6 +143,7 @@ export type TransferAuthorityToBorrowerAsyncInput<
   TAccountLoan extends string = string,
   TAccountBorrower extends string = string,
   TAccountProgramData extends string = string,
+  TAccountBpfUpgradeableLoader extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
   TAccountProgram extends string = string,
@@ -146,6 +153,7 @@ export type TransferAuthorityToBorrowerAsyncInput<
   loan: Address<TAccountLoan>;
   borrower: Address<TAccountBorrower>;
   programData: Address<TAccountProgramData>;
+  bpfUpgradeableLoader?: Address<TAccountBpfUpgradeableLoader>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority?: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -158,6 +166,7 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
   TAccountLoan extends string,
   TAccountBorrower extends string,
   TAccountProgramData extends string,
+  TAccountBpfUpgradeableLoader extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
   TAccountProgram extends string,
@@ -169,6 +178,7 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
     TAccountLoan,
     TAccountBorrower,
     TAccountProgramData,
+    TAccountBpfUpgradeableLoader,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -182,6 +192,7 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
     TAccountLoan,
     TAccountBorrower,
     TAccountProgramData,
+    TAccountBpfUpgradeableLoader,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -195,8 +206,12 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
     deployer: { value: input.deployer ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: false },
     loan: { value: input.loan ?? null, isWritable: true },
-    borrower: { value: input.borrower ?? null, isWritable: false },
-    programData: { value: input.programData ?? null, isWritable: false },
+    borrower: { value: input.borrower ?? null, isWritable: true },
+    programData: { value: input.programData ?? null, isWritable: true },
+    bpfUpgradeableLoader: {
+      value: input.bpfUpgradeableLoader ?? null,
+      isWritable: false,
+    },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     program: { value: input.program ?? null, isWritable: false },
@@ -217,6 +232,10 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
         getBytesEncoder().encode(new Uint8Array([99, 111, 110, 102, 105, 103])),
       ],
     });
+  }
+  if (!accounts.bpfUpgradeableLoader.value) {
+    accounts.bpfUpgradeableLoader.value =
+      'BPFLoaderUpgradeab1e11111111111111111111111' as Address<'BPFLoaderUpgradeab1e11111111111111111111111'>;
   }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
@@ -244,6 +263,7 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
       getAccountMeta(accounts.loan),
       getAccountMeta(accounts.borrower),
       getAccountMeta(accounts.programData),
+      getAccountMeta(accounts.bpfUpgradeableLoader),
       getAccountMeta(accounts.systemProgram),
       getAccountMeta(accounts.eventAuthority),
       getAccountMeta(accounts.program),
@@ -259,6 +279,7 @@ export async function getTransferAuthorityToBorrowerInstructionAsync<
     TAccountLoan,
     TAccountBorrower,
     TAccountProgramData,
+    TAccountBpfUpgradeableLoader,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -271,6 +292,7 @@ export type TransferAuthorityToBorrowerInput<
   TAccountLoan extends string = string,
   TAccountBorrower extends string = string,
   TAccountProgramData extends string = string,
+  TAccountBpfUpgradeableLoader extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountEventAuthority extends string = string,
   TAccountProgram extends string = string,
@@ -280,6 +302,7 @@ export type TransferAuthorityToBorrowerInput<
   loan: Address<TAccountLoan>;
   borrower: Address<TAccountBorrower>;
   programData: Address<TAccountProgramData>;
+  bpfUpgradeableLoader?: Address<TAccountBpfUpgradeableLoader>;
   systemProgram?: Address<TAccountSystemProgram>;
   eventAuthority: Address<TAccountEventAuthority>;
   program: Address<TAccountProgram>;
@@ -292,6 +315,7 @@ export function getTransferAuthorityToBorrowerInstruction<
   TAccountLoan extends string,
   TAccountBorrower extends string,
   TAccountProgramData extends string,
+  TAccountBpfUpgradeableLoader extends string,
   TAccountSystemProgram extends string,
   TAccountEventAuthority extends string,
   TAccountProgram extends string,
@@ -303,6 +327,7 @@ export function getTransferAuthorityToBorrowerInstruction<
     TAccountLoan,
     TAccountBorrower,
     TAccountProgramData,
+    TAccountBpfUpgradeableLoader,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -315,6 +340,7 @@ export function getTransferAuthorityToBorrowerInstruction<
   TAccountLoan,
   TAccountBorrower,
   TAccountProgramData,
+  TAccountBpfUpgradeableLoader,
   TAccountSystemProgram,
   TAccountEventAuthority,
   TAccountProgram
@@ -327,8 +353,12 @@ export function getTransferAuthorityToBorrowerInstruction<
     deployer: { value: input.deployer ?? null, isWritable: false },
     protocolConfig: { value: input.protocolConfig ?? null, isWritable: false },
     loan: { value: input.loan ?? null, isWritable: true },
-    borrower: { value: input.borrower ?? null, isWritable: false },
-    programData: { value: input.programData ?? null, isWritable: false },
+    borrower: { value: input.borrower ?? null, isWritable: true },
+    programData: { value: input.programData ?? null, isWritable: true },
+    bpfUpgradeableLoader: {
+      value: input.bpfUpgradeableLoader ?? null,
+      isWritable: false,
+    },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
     program: { value: input.program ?? null, isWritable: false },
@@ -342,6 +372,10 @@ export function getTransferAuthorityToBorrowerInstruction<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.bpfUpgradeableLoader.value) {
+    accounts.bpfUpgradeableLoader.value =
+      'BPFLoaderUpgradeab1e11111111111111111111111' as Address<'BPFLoaderUpgradeab1e11111111111111111111111'>;
+  }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
       '11111111111111111111111111111111' as Address<'11111111111111111111111111111111'>;
@@ -355,6 +389,7 @@ export function getTransferAuthorityToBorrowerInstruction<
       getAccountMeta(accounts.loan),
       getAccountMeta(accounts.borrower),
       getAccountMeta(accounts.programData),
+      getAccountMeta(accounts.bpfUpgradeableLoader),
       getAccountMeta(accounts.systemProgram),
       getAccountMeta(accounts.eventAuthority),
       getAccountMeta(accounts.program),
@@ -370,6 +405,7 @@ export function getTransferAuthorityToBorrowerInstruction<
     TAccountLoan,
     TAccountBorrower,
     TAccountProgramData,
+    TAccountBpfUpgradeableLoader,
     TAccountSystemProgram,
     TAccountEventAuthority,
     TAccountProgram
@@ -387,9 +423,10 @@ export type ParsedTransferAuthorityToBorrowerInstruction<
     loan: TAccountMetas[2];
     borrower: TAccountMetas[3];
     programData: TAccountMetas[4];
-    systemProgram: TAccountMetas[5];
-    eventAuthority: TAccountMetas[6];
-    program: TAccountMetas[7];
+    bpfUpgradeableLoader: TAccountMetas[5];
+    systemProgram: TAccountMetas[6];
+    eventAuthority: TAccountMetas[7];
+    program: TAccountMetas[8];
   };
   data: TransferAuthorityToBorrowerInstructionData;
 };
@@ -402,7 +439,7 @@ export function parseTransferAuthorityToBorrowerInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>
 ): ParsedTransferAuthorityToBorrowerInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 8) {
+  if (instruction.accounts.length < 9) {
     // TODO: Coded error.
     throw new Error('Not enough accounts');
   }
@@ -420,6 +457,7 @@ export function parseTransferAuthorityToBorrowerInstruction<
       loan: getNextAccount(),
       borrower: getNextAccount(),
       programData: getNextAccount(),
+      bpfUpgradeableLoader: getNextAccount(),
       systemProgram: getNextAccount(),
       eventAuthority: getNextAccount(),
       program: getNextAccount(),

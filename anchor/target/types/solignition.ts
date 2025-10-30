@@ -675,9 +675,6 @@ export type Solignition = {
         },
         {
           "name": "adminPda",
-          "docs": [
-            "/// CHECK: Authority PDA for program control\n    #[account(\n        seeds = [AUTHORITY_SEED],\n        bump\n    )]\n    pub authority_pda: AccountInfo<'info>,"
-          ],
           "writable": true,
           "pda": {
             "seeds": [
