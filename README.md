@@ -168,7 +168,7 @@ solignition/
 │   └── features/                # Feature-specific components
 │       ├── protocol/            # Protocol interaction UI
 │       └── account/             # Account management
-└── clients/js/                  # Additional generated clients
+└── clients/js/                  # main client used
 ```
 
 ## Key Concepts
@@ -217,14 +217,6 @@ This project uses:
 - **Gill SDK**: Modern Solana web3 library
 - **TypeScript**: Type-safe client development
 - **Vitest**: Fast unit testing
-
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
 
 ## License
 #
