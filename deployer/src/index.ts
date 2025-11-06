@@ -264,6 +264,59 @@ class StateManager {
     return null;
   }
 
+  async getAllFileUploadsByBorrower(borrower: string): Promise<FileUploadRecord[]> {
+  const uploads: FileUploadRecord[] = [];
+  for await (const [key, value] of this.db.iterator()) {
+    if (key.startsWith('upload:') && value.borrower === borrower) {
+      uploads.push(value);
+    }
+  }
+  return uploads;
+}
+
+async getFileUploadsByBorrowerAndStatus(
+  borrower: string, 
+  status?: FileUploadRecord['status']
+): Promise<FileUploadRecord[]> {
+  const uploads: FileUploadRecord[] = [];
+  for await (const [key, value] of this.db.iterator()) {
+    if (key.startsWith('upload:') && value.borrower === borrower) {
+      if (!status || value.status === status) {
+        uploads.push(value);
+      }
+    }
+  }
+  return uploads;
+}
+
+// method to get all uploads (for admin views)
+async getAllFileUploads(): Promise<FileUploadRecord[]> {
+  const uploads: FileUploadRecord[] = [];
+  for await (const [key, value] of this.db.iterator()) {
+    if (key.startsWith('upload:')) {
+      uploads.push(value);
+    }
+  }
+  return uploads;
+}
+
+// pagination support for large lists
+async getFileUploadsByBorrowerPaginated(
+  borrower: string, 
+  limit: number = 10, 
+  offset: number = 0
+): Promise<{ uploads: FileUploadRecord[], total: number }> {
+  const allUploads = await this.getAllFileUploadsByBorrower(borrower);
+  const uploads = allUploads
+    .sort((a, b) => b.createdAt - a.createdAt) // Sort by newest first
+    .slice(offset, offset + limit);
+  
+  return {
+    uploads,
+    total: allUploads.length
+  };
+}
+
   async setLastProcessedLoanId(loanId: string): Promise<void> {
     await this.db.put('last-processed-loan-id', loanId);
   }
@@ -286,10 +339,12 @@ class StateManager {
 class BinaryManager {
   private storagePath: string;
   private uploadPath: string;
+  private deployer: SolanaCliDeployer;
 
-  constructor(storagePath: string, uploadPath: string) {
+  constructor(storagePath: string, uploadPath: string, deployer: SolanaCliDeployer) {
     this.storagePath = storagePath;
     this.uploadPath = uploadPath;
+    this.deployer = deployer;
   }
 
   async init(): Promise<void> {
@@ -326,24 +381,84 @@ class BinaryManager {
   }
 
   async estimateDeploymentCost(binaryPath: string): Promise<number> {
-    try {
-      const stats = await fs.stat(binaryPath);
-      const fileSize = stats.size;
+   try {
+     logger.info('Estimating deployment cost for binary', { binaryPath });
+    
+     // Get actual rent cost from Solana CLI
+     const rentInfo = await this.deployer.estimateRentForFile(binaryPath);
+    
+     // Calculate number of transactions needed based on file size
+     // Solana transaction size limit is ~1232 bytes
+     // After accounting for transaction overhead (signatures, headers, instructions),
+     // we typically have ~900 bytes available for actual program data per transaction
+     const USABLE_BYTES_PER_TRANSACTION = 900; // Conservative estimate
+     const BASE_FEE_PER_TRANSACTION = 0.000005; // 5000 lamports per signature
+    
+     // Calculate number of write transactions needed
+     const numWriteTransactions = Math.ceil(rentInfo.sizeInBytes / USABLE_BYTES_PER_TRANSACTION);
+    
+     // Total transactions include:
+     // 1. Initial transaction to create the program account
+     // 2. Multiple transactions to write the program data
+     // 3. Final transaction to mark the program as executable
+     const totalTransactions = numWriteTransactions + 2;
+    
+     // Calculate transaction fees
+     const estimatedTransactionFees = totalTransactions * BASE_FEE_PER_TRANSACTION;
+    
+     // Add a small buffer for potential additional compute units
+     // Larger programs may need more compute units
+     const computeUnitBuffer = Math.min(0.001, rentInfo.sizeInBytes / (1024 * 1024) * 0.0001);
+    
+     // Calculate total cost
+     const totalCost = rentInfo.sol + estimatedTransactionFees + computeUnitBuffer;
+    
+     logger.info('Deployment cost estimated', {
+      binaryPath,
+      fileSizeBytes: rentInfo.sizeInBytes,
+      fileSizeMB: (rentInfo.sizeInBytes / (1024 * 1024)).toFixed(2),
+      rentCostSOL: rentInfo.sol,
+      //rentCostLamports: rentInfo.lamports,
+      numWriteTransactions,
+      totalTransactions,
+      transactionFees: estimatedTransactionFees,
+      computeUnitBuffer: computeUnitBuffer,
+      totalCostSOL: totalCost
+     });
+    
+     // Round up to 4 decimal places
+     return Math.ceil(totalCost * 10000) / 10000;
+   }  catch (error) {
+     logger.error('Error estimating deployment cost', { 
+       error, 
+       binaryPath 
+     });
+    
+     // Fallback to estimated calculation if Solana CLI fails
+     try {
+       const stats = await fs.stat(binaryPath);
+       const fileSize = stats.size;
       
-      // Base cost for creating program account
-      // Approximately 1 lamport per byte + rent exemption
-      const rentExemptionBase = 0.01; // Base rent exemption in SOL
-      const byteCost = fileSize * 0.00000348; // Cost per byte in SOL
-      const transactionFees = 0.001; // Estimated transaction fees
+       logger.warn('Falling back to estimated rent calculation', { fileSize });
       
-      // Add buffer for compute units and other costs
-      const totalCost = rentExemptionBase + byteCost + transactionFees;
+       // Fallback estimation
+       const rentExemptionBase = 0.01;
+       const byteCost = fileSize * 0.00000348;
+       
+       // Calculate transaction fees based on file size
+       const USABLE_BYTES_PER_TRANSACTION = 900;
+       const BASE_FEE_PER_TRANSACTION = 0.000005;
+       const numWriteTransactions = Math.ceil(fileSize / USABLE_BYTES_PER_TRANSACTION);
+       const totalTransactions = numWriteTransactions + 2;
+       const transactionFees = totalTransactions * BASE_FEE_PER_TRANSACTION;
       
-      // Round up to 4 decimal places
-      return Math.ceil(totalCost * 10000) / 10000;
-    } catch (error) {
-      logger.error('Error estimating deployment cost', { error });
-      throw error;
+       const totalCost = rentExemptionBase + byteCost + transactionFees;
+      
+       return Math.ceil(totalCost * 10000) / 10000;
+     } catch (fallbackError) {
+       logger.error('Fallback estimation also failed', { fallbackError });
+       throw error; // Throw original error
+      }
     }
   }
 }
@@ -454,6 +569,86 @@ class SolanaCliDeployer {
     const balance = await this.connection.getBalance(pubkey);
     return balance / LAMPORTS_PER_SOL;
   }
+
+  async estimateRent(sizeInBytes: number): Promise<{  sol: number }> {
+  const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+  
+  try {
+    // Validate size
+    if (sizeInBytes <= 0) {
+      throw new Error('File size must be greater than 0 bytes');
+    }
+    
+    if (sizeInBytes > MAX_SIZE_BYTES) {
+      throw new Error(`File size exceeds maximum allowed size of ${MAX_SIZE_BYTES} bytes (10MB)`);
+    }
+    
+    logger.info('Estimating rent for file', { sizeInBytes });
+    
+    // Build the rent command
+    const rentCommand = `${config.solanaCliPath || 'solana'} rent ${sizeInBytes} \
+      --url ${config.rpcUrl}`;
+    
+    logger.info('Executing rent command', { command: rentCommand });
+    
+    // Execute the rent estimation
+    const { stdout, stderr } = await execAsync(rentCommand);
+    
+    if (stderr) {
+      throw new Error(`Rent estimation error: ${stderr}`);
+    }
+    
+    // Parse the rent amount from output
+    // Typical output format: "Rent-exempt minimum: X lamports (Y SOL)"
+    //const lamportsMatch = stdout.match(/(\d+(?:\.\d+)?)\s*lamports/);
+    const solMatch = stdout.match(/(\d+(?:\.\d+)?)\s*SOL/);
+    /*
+    if (!lamportsMatch || !solMatch) {
+      throw new Error('Failed to parse rent amount from output');
+    } */
+    
+    //const lamports = parseFloat(lamportsMatch[1]);
+    const sol = parseFloat(solMatch[1]);
+    
+    logger.info('Rent estimated successfully', { 
+      sizeInBytes, 
+      //lamports, 
+      sol 
+    });
+    
+    return { sol };
+  } catch (error) {
+    logger.error('Failed to estimate rent', { 
+      error, 
+      sizeInBytes 
+    });
+    throw error;
+  }
+}
+
+// Add a helper method to estimate rent for a file path
+async estimateRentForFile(filePath: string): Promise<{ sol: number; sizeInBytes: number }> {
+  try {
+    // Get file stats to determine size
+    const stats = await fs.stat(filePath);
+    const sizeInBytes = stats.size;
+    
+    logger.info('Estimating rent for file path', { filePath, sizeInBytes });
+    
+    const rentInfo = await this.estimateRent(sizeInBytes);
+    
+    return {
+      ...rentInfo,
+      sizeInBytes
+    };
+  } catch (error) {
+    logger.error('Failed to estimate rent for file', { 
+      error, 
+      filePath 
+    });
+    throw error;
+  }
+}
 }
 
 // ============ GraphQL Client ============
@@ -832,7 +1027,7 @@ class DeployerOrchestrator {
   }
 
   private startExpiredLoanChecker(): void {
-  const CHECK_INTERVAL_MS = 1 * 60 * 1000; // 30 minutes
+  const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
   
   setTimeout(() => {
     this.checkExpiredLoans().catch(error => 
@@ -1648,13 +1843,6 @@ class ApiServer {
           borrower, 
           loanId: loanId || 'unknown'
         });
-        /*
-        res.json({
-        success: true,
-        message: 'Auth transfer queued',
-        loanId,
-        }); */
-
 
         let tx;
         // Give the transaction a moment to be confirmed
@@ -1814,7 +2002,7 @@ class ApiServer {
         );
 
         // Estimate deployment cost
-        const estimatedCost = await this.binaryManager.estimateDeploymentCost(destinationPath);
+        const estimatedCost = await  this.binaryManager.estimateDeploymentCost(destinationPath);
 
         // Save file upload record
         const fileUpload: FileUploadRecord = {
@@ -1890,6 +2078,98 @@ class ApiServer {
         res.status(500).json({ error: String(error) });
       }
     });
+
+    // Get all uploads for a borrower
+this.app.get('/uploads/borrower/:borrower', async (req, res) => {
+  try {
+    const uploads = await this.stateManager.getAllFileUploadsByBorrower(req.params.borrower);
+    
+    // Sort by creation date (newest first)
+    const sortedUploads = uploads.sort((a, b) => b.createdAt - a.createdAt);
+    
+    res.json(sortedUploads);
+  } catch (error) {
+    logger.error('Error fetching uploads for borrower', { 
+      borrower: req.params.borrower, 
+      error 
+    });
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Optional: Add pagination support
+this.app.get('/uploads/borrower/:borrower/paginated', async (req, res) => {
+  try {
+    const { limit = '10', offset = '0', status } = req.query;
+    
+    let uploads = await this.stateManager.getAllFileUploadsByBorrower(req.params.borrower);
+    
+    // Filter by status if provided
+    if (status && ['pending', 'ready', 'deployed'].includes(status as string)) {
+      uploads = uploads.filter(u => u.status === status);
+    }
+    
+    // Sort by newest first
+    uploads.sort((a, b) => b.createdAt - a.createdAt);
+    
+    // Paginate
+    const paginatedUploads = uploads.slice(
+      parseInt(offset as string), 
+      parseInt(offset as string) + parseInt(limit as string)
+    );
+    
+    res.json({
+      uploads: paginatedUploads,
+      total: uploads.length,
+      limit: parseInt(limit as string),
+      offset: parseInt(offset as string),
+      hasMore: uploads.length > (parseInt(offset as string) + parseInt(limit as string))
+    });
+  } catch (error) {
+    logger.error('Error fetching paginated uploads', { 
+      borrower: req.params.borrower, 
+      error 
+    });
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// Optional: Delete an upload 
+this.app.delete('/uploads/:fileId', async (req, res) => {
+  try {
+    const upload = await this.stateManager.getFileUpload(req.params.fileId);
+    
+    if (!upload) {
+      return res.status(404).json({ error: 'Upload not found' });
+    }
+    
+    // Verify the requester owns this upload (you'll need to pass borrower in request)
+    const { borrower } = req.body;
+    if (!borrower || upload.borrower !== borrower) {
+      return res.status(403).json({ error: 'Unauthorized to delete this upload' });
+    }
+    
+    // Only allow deletion if not already deployed
+    if (upload.status === 'deployed') {
+      return res.status(400).json({ error: 'Cannot delete deployed uploads' });
+    }
+    
+    // Delete the file from disk
+    try {
+      await fs.unlink(upload.filePath);
+    } catch (error) {
+      logger.warn('Failed to delete file from disk', { filePath: upload.filePath, error });
+    }
+    
+    // Delete from state TBI
+   // await this.stateManager.deleteFileUpload(req.params.fileId);
+    
+    res.json({ success: true, message: 'Upload deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting upload', { fileId: req.params.fileId, error });
+    res.status(500).json({ error: String(error) });
+  }
+   });
   }
 
   private async processLoanFromSignature(
@@ -2125,15 +2405,16 @@ async function main() {
 
     // Initialize components
     logger.info('Initializing components...');
-    const stateManager = new StateManager(config.dbPath);
-    const binaryManager = new BinaryManager(config.binaryStoragePath, config.uploadPath);
-    await binaryManager.init();
-
     const solanaDeployer = new SolanaCliDeployer(
       connection,
       config.deployerKeypairPath,
       config.cluster
     );
+    const stateManager = new StateManager(config.dbPath);
+    const binaryManager = new BinaryManager(config.binaryStoragePath, config.uploadPath, solanaDeployer);
+    await binaryManager.init();
+
+    
 
     const graphqlMonitor = new GraphQLMonitor(
       config.graphqlEndpoint,

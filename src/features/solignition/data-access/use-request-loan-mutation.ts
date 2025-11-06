@@ -17,7 +17,8 @@ type RequestLoanParams = {
   duration: bigint
   interestRateBps: number
   adminFeeBps: number
-  file: File
+  fileId: string
+  useExisting: boolean
 }
 
 interface UploadResponse {
@@ -50,33 +51,9 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
         throw new Error('Protocol config not loaded')
       }
 
-       // Step 1: Upload the file to the deployer
-      toast.info('Uploading program file...', {
-        description: 'Please wait while we upload your program file',
-      })
-
-      const formData = new FormData()
-      formData.append('file', params.file)
-      formData.append('borrower', account.address)
+      // Since we already have the fileId, we can skip the upload step
+      const fileId = params.fileId
       
-
-      const uploadResponse = await fetch(`${DEPLOYER_API_URL}/upload`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json()
-        throw new Error(errorData.error || 'Failed to upload program file')
-      }
-
-      const uploadData: UploadResponse = await uploadResponse.json()
-      
-      toast.success('Program file uploaded', {
-        description: `Estimated deployment cost: ${uploadData.estimatedCost} SOL`,
-      })
-
-      // Step 2: Request the loan on-chain
       toast.info('Requesting loan...', {
         description: 'Please approve the transaction in your wallet',
       })
@@ -95,11 +72,14 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
         seeds: [new TextEncoder().encode('deployer')],
       });
 
-        const [loanPda] = await getProgramDerivedAddress({
+      const [loanPda] = await getProgramDerivedAddress({
         programAddress: SOLIGNITION_PROGRAM_ADDRESS,
-        seeds: [new TextEncoder().encode('loan'),(new anchor.BN(loanId)).toArrayLike(Buffer, "le", 8), new PublicKey(signer.address).toBuffer() ],
+        seeds: [
+          new TextEncoder().encode('loan'),
+          (new anchor.BN(loanId)).toArrayLike(Buffer, "le", 8), 
+          new PublicKey(signer.address).toBuffer()
+        ],
       });
-      
 
       const instruction = await getRequestLoanInstructionAsync({
         program: SOLIGNITION_PROGRAM_ADDRESS,
@@ -115,7 +95,7 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
 
       const signature = await signAndSend(instruction, signer);
 
-       // Step 3: Notify the deployer about the loan request
+      // Step 3: Notify the deployer about the loan request
       toast.info('Notifying deployment service...', {
         description: 'Triggering automatic deployment',
       })
@@ -130,21 +110,21 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
             signature,
             borrower: account.address,
             loanId: loanId.toString(),
+            fileId, // Pass the file ID directly
           }),
         })
 
         if (!notifyResponse.ok) {
           const errorData = await notifyResponse.json()
-         // toast.error('Failed to notify deployer', { errorData })
           toast.warning('Loan created but deployment notification failed', {
             description: 'Please contact support if your program is not deployed',
           })
         } else {
           const notifyData: NotifyLoanResponse = await notifyResponse.json()
-          //logger.info('Deployer notified successfully', { notifyData })
+          console.log('Deployer notified successfully', notifyData)
         }
       } catch (notifyError) {
-        //logger.error('Error notifying deployer', { notifyError })
+        console.error('Error notifying deployer', notifyError)
         toast.warning('Loan created but could not notify deployer', {
           description: 'The deployment may still be processed automatically',
         })
@@ -162,6 +142,9 @@ export function useRequestLoanMutation({ account }: { account: UiWalletAccount }
       })
       await queryClient.invalidateQueries({
         queryKey: ['protocol-config', { cluster: cluster.id }],
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['uploaded-programs'],
       })
     },
     onError: (error: Error) => {
